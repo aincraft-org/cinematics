@@ -1,0 +1,17 @@
+name: Cinematics
+version: '${version}'
+main: dev.cinematics.CinematicsPlugin
+api-version: '1.21'
+folia-supported: true
+description: Cinematic camera scenes with shader overlays and props.
+author: jlo
+commands:
+  cinematic:
+    description: Create cinematic camera scenes with shaders and props.
+    aliases: [cinematics, cine]
+    permission: cinematics.use
+    permission-message: You do not have permission to use cinematics.
+permissions:
+  cinematics.use:
+    description: Create, play, and stop cinematic camera scenes with shaders and props
+    default: op
