@@ -31,7 +31,9 @@ those overlays and props.
 
 ### Out of scope / non-goals
 - Iris / OptiFine / Vibrant Visuals client shader packs
-- Replay recording, video export, Flashback/ReplayMod clones
+- Replay recording / exporting the live world camera to MP4 (the Paper server does
+  not render a player's view; that needs a client recorder such as Flashback,
+  ReplayMod, or OBS)
 - Embedding in the Extras plugin (this used to live there; Extras no longer owns it)
 - Screen shake, FOV zoom, camera roll, NPC actors, dialogue, timestamped
   arbitrary commands (see Future)
@@ -98,6 +100,7 @@ Authoring is add-only (create, append keyframe/cue, list, play/stop). There is n
 - [ ] Mannequin / player-display actors
 - [ ] Allowlisted timestamped commands
 - [ ] Screen shake, FOV zoom, camera roll (poor vanilla fit; keep deferred)
+- [ ] In-game MP4/WebM playback on a map or item-frame screen (not live camera export)
 
 ## Decisions log
 
@@ -108,8 +111,11 @@ Authoring is add-only (create, append keyframe/cue, list, play/stop). There is n
 | 2026-08-19 | Second play for a player is rejected, not stacked | Restores stay unambiguous; operator stops first |
 | 2026-08-19 | Duration is the last keyframe time; cues outside that window never play | `sample(duration)` matching the last keyframe stays well-defined |
 | 2026-08-19 | Extract from Extras into `/home/jlo/dev/cinematics` | Cinematics is its own plugin; Extras stays social/mail/chat |
+| 2026-08-19 | Do not export live scenes to MP4 on the server | Paper never sees the pixels of the world; client recording only |
+| 2026-08-19 | Park in-game MP4-on-screen as Future, not Next | Different product from camera-path cutscenes; needs FFmpeg/maps |
 
 ## Open questions
 
 - [x] Inclusive cue windows? Yes: `start <= t <= end`.
 - [ ] Which Next slice to build first: freeze, authoring edits, or skip?
+- [ ] Want an in-game video screen (play an MP4 on maps), or only live camera keyframes?
