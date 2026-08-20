@@ -32,9 +32,18 @@ public final class DefaultCinematicService implements CinematicService {
   private final Object mutationLock = new Object();
 
   public DefaultCinematicService(CinematicRepository repository) {
+    this(repository, new MemoryExperienceRepository());
+  }
+
+  public DefaultCinematicService(
+      CinematicRepository repository, ExperienceRepository experienceRepository) {
     this.repository = Objects.requireNonNull(repository, "repository");
     this.sessions = new PlayerSessions();
-    this.experiences = new DefaultExperienceService(this, this.sessions);
+    this.experiences =
+        new DefaultExperienceService(
+            this,
+            this.sessions,
+            Objects.requireNonNull(experienceRepository, "experienceRepository"));
     for (CinematicDraft draft : repository.loadAll()) {
       drafts.put(draft.name(), draft);
     }

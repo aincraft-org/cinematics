@@ -3,6 +3,7 @@ package dev.cinematics;
 import dev.cinematics.api.CinematicService;
 import dev.cinematics.core.DefaultCinematicService;
 import dev.cinematics.core.JsonCinematicRepository;
+import dev.cinematics.core.JsonExperienceRepository;
 import dev.cinematics.paper.CinematicCommand;
 import dev.cinematics.paper.PaperCinematicController;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
@@ -28,7 +29,9 @@ public final class CinematicsPlugin extends JavaPlugin {
     }
     Path dataDir = getDataFolder().toPath();
     cinematicService =
-        new DefaultCinematicService(new JsonCinematicRepository(dataDir.resolve("scenes")));
+        new DefaultCinematicService(
+            new JsonCinematicRepository(dataDir.resolve("scenes")),
+            new JsonExperienceRepository(dataDir.resolve("experiences")));
     Bukkit.getServicesManager()
         .register(CinematicService.class, cinematicService, this, ServicePriority.Normal);
     cinematicController = new PaperCinematicController(this, cinematicService);
@@ -44,7 +47,13 @@ public final class CinematicsPlugin extends JavaPlugin {
                         "Create cinematic camera scenes with shaders and props.",
                         List.of("cinematics", "cine"),
                         new CinematicCommand(cinematicService, cinematicController)));
-    getLogger().info("Cinematics enabled (scenes at " + dataDir.resolve("scenes") + ").");
+    getLogger()
+        .info(
+            "Cinematics enabled (scenes at "
+                + dataDir.resolve("scenes")
+                + ", experiences at "
+                + dataDir.resolve("experiences")
+                + ").");
   }
 
   @Override

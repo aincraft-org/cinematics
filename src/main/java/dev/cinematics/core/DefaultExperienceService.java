@@ -28,12 +28,18 @@ final class DefaultExperienceService implements ExperienceService {
 
   private final CinematicService cinematic;
   private final PlayerSessions sessions;
+  private final ExperienceRepository repository;
   private final ConcurrentMap<String, Experience> experiences = new ConcurrentHashMap<>();
   private final Object mutationLock = new Object();
 
-  DefaultExperienceService(CinematicService cinematic, PlayerSessions sessions) {
+  DefaultExperienceService(
+      CinematicService cinematic, PlayerSessions sessions, ExperienceRepository repository) {
     this.cinematic = Objects.requireNonNull(cinematic, "cinematic");
     this.sessions = Objects.requireNonNull(sessions, "sessions");
+    this.repository = Objects.requireNonNull(repository, "repository");
+    for (Experience experience : repository.loadAll()) {
+      experiences.put(experience.name(), experience);
+    }
   }
 
   @Override
@@ -41,6 +47,7 @@ final class DefaultExperienceService implements ExperienceService {
     Objects.requireNonNull(experience, "experience");
     synchronized (mutationLock) {
       experiences.put(experience.name(), experience);
+      repository.save(experience);
       return CinematicResult.SUCCESS;
     }
   }
@@ -131,6 +138,7 @@ final class DefaultExperienceService implements ExperienceService {
 
   void close() {
     experiences.clear();
+    repository.close();
   }
 
   private static ExperienceSnapshot restored(Playback playback) {

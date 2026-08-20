@@ -151,6 +151,40 @@ class ExperienceServiceTest {
   }
 
   @Test
+  void savedExperienceReloadsFromTheRepository() {
+    Path scenesDir = tempDir.resolve("scenes");
+    Path experiencesDir = tempDir.resolve("experiences");
+    DefaultCinematicService writer =
+        new DefaultCinematicService(
+            new JsonCinematicRepository(scenesDir), new JsonExperienceRepository(experiencesDir));
+    assertEquals(CinematicResult.SUCCESS, writer.save(twoPointScene()));
+    Experience join = oneBeatJoin();
+    assertEquals(CinematicResult.SUCCESS, writer.experiences().save(join));
+
+    DefaultCinematicService reader =
+        new DefaultCinematicService(
+            new JsonCinematicRepository(scenesDir), new JsonExperienceRepository(experiencesDir));
+    Experience loaded = reader.experiences().experience("join").orElseThrow();
+    assertEquals(join, loaded);
+    assertEquals(Audience.SUBJECT, loaded.audience());
+    assertEquals(CompletionAction.RESTORE, loaded.onComplete());
+    assertEquals("flyover", loaded.beats().getFirst().id());
+    assertEquals("intro", ((TimelineBeat) loaded.beats().getFirst()).sceneName());
+  }
+
+  @Test
+  void corruptedExperienceFileDoesNotFailLoad() throws Exception {
+    Path experiencesDir = tempDir.resolve("experiences");
+    java.nio.file.Files.createDirectories(experiencesDir);
+    java.nio.file.Files.writeString(experiencesDir.resolve("join.json"), "{not-json");
+    DefaultCinematicService service =
+        new DefaultCinematicService(
+            new JsonCinematicRepository(tempDir.resolve("scenes")),
+            new JsonExperienceRepository(experiencesDir));
+    assertTrue(service.experiences().experience("join").isEmpty());
+  }
+
+  @Test
   void scenePlayAndExperienceStartShareTheExclusiveSlot() {
     DefaultCinematicService cinematic = newCinematic();
     cinematic.save(twoPointScene());
