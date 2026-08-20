@@ -114,4 +114,73 @@ class ExperienceServiceTest {
     assertEquals(CinematicResult.SUCCESS, experiences.save(oneBeatJoin()));
     assertEquals(CinematicResult.UNKNOWN_SCENE, experiences.start(playerId, "join", original));
   }
+
+  @Test
+  void twoBeatExperienceAdvancesAtTheFirstDuration() {
+    DefaultCinematicService cinematic = newCinematic();
+    cinematic.save(twoPointScene());
+    cinematic.save(outroScene());
+    ExperienceService experiences = cinematic.experiences();
+    experiences.save(twoBeatJoin());
+
+    CameraPose original = pose("world", 50, 80, 50);
+    assertEquals(CinematicResult.SUCCESS, experiences.start(playerId, "join", original));
+
+    ExperienceSnapshot first = experiences.sample(playerId, 4.0).orElseThrow();
+    assertTrue(first.playing());
+    assertEquals(0, first.beatIndex());
+    assertEquals("flyover", first.beatId());
+    assertTrue(first.pose().x() > 0 && first.pose().x() < 10);
+
+    ExperienceSnapshot secondStart = experiences.sample(playerId, 10.0).orElseThrow();
+    assertTrue(secondStart.playing());
+    assertEquals(1, secondStart.beatIndex());
+    assertEquals("land", secondStart.beatId());
+    assertEquals(10.0, secondStart.pose().x(), 1e-9);
+    assertEquals(20.0, secondStart.pose().z(), 1e-9);
+
+    ExperienceSnapshot secondMid = experiences.sample(playerId, 12.0).orElseThrow();
+    assertTrue(secondMid.playing());
+    assertEquals(1, secondMid.beatIndex());
+    assertTrue(secondMid.pose().x() > 10 && secondMid.pose().x() < 20);
+
+    ExperienceSnapshot done = experiences.sample(playerId, 15.0).orElseThrow();
+    assertFalse(done.playing());
+    assertEquals(original, done.pose());
+    assertTrue(experiences.sample(playerId, 0).isEmpty());
+  }
+
+  @Test
+  void scenePlayAndExperienceStartShareTheExclusiveSlot() {
+    DefaultCinematicService cinematic = newCinematic();
+    cinematic.save(twoPointScene());
+    ExperienceService experiences = cinematic.experiences();
+    experiences.save(oneBeatJoin());
+    CameraPose original = pose("world", 1, 64, 1);
+
+    assertEquals(CinematicResult.SUCCESS, cinematic.play(playerId, "intro", original));
+    assertEquals(CinematicResult.ALREADY_PLAYING, experiences.start(playerId, "join", original));
+    assertTrue(cinematic.stop(playerId).isPresent());
+
+    assertEquals(CinematicResult.SUCCESS, experiences.start(playerId, "join", original));
+    assertEquals(CinematicResult.ALREADY_PLAYING, cinematic.play(playerId, "intro", original));
+  }
+
+  private static CinematicScene outroScene() {
+    return CinematicScene.load(
+        "outro",
+        List.of(
+            new CameraKeyframe(0, pose("world", 10, 64, 20)),
+            new CameraKeyframe(5, pose("world", 20, 64, 20))),
+        List.of(),
+        List.of());
+  }
+
+  private static Experience twoBeatJoin() {
+    return Experience.load(
+        "join",
+        Audience.SUBJECT,
+        CompletionAction.RESTORE,
+        List.of(new TimelineBeat("flyover", "intro"), new TimelineBeat("land", "outro")));
+  }
 }
