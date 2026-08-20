@@ -48,13 +48,19 @@ class PluginDescriptorTest {
         source.contains("register(CinematicService.class"),
         "CinematicsPlugin should register CinematicService on ServicesManager");
     assertTrue(
-        source.contains("new CinematicCommand(cinematicService, cinematicController)"),
+        source.contains("new CinematicCommand("),
         "CinematicsPlugin should register the cinematic command");
+    assertTrue(
+        source.contains("register(ExperienceService.class"),
+        "CinematicsPlugin should register ExperienceService on ServicesManager");
     String commandSource =
         java.nio.file.Files.readString(
             java.nio.file.Path.of("src/main/java/dev/cinematics/paper/CinematicCommand.java"));
     assertTrue(commandSource.contains("camera add"), "command must add a camera keyframe");
     assertTrue(commandSource.contains("/cinematic play"), "command must play a named scene");
     assertTrue(commandSource.contains("/cinematic stop"), "command must stop playback");
+    assertTrue(
+        commandSource.contains("/cinematic experience play"),
+        "command must play a named experience");
   }
 }

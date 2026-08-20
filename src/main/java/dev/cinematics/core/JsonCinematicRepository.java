@@ -254,7 +254,7 @@ public final class JsonCinematicRepository implements CinematicRepository {
     }
   }
 
-  private static String stringField(String json, String field) {
+  static String stringField(String json, String field) {
     Matcher matcher = STRING_FIELD.matcher(json);
     while (matcher.find()) {
       if (field.equals(matcher.group(1))) {
@@ -264,7 +264,7 @@ public final class JsonCinematicRepository implements CinematicRepository {
     return null;
   }
 
-  private static Double numberField(String json, String field) {
+  static Double numberField(String json, String field) {
     Matcher matcher = NUMBER_FIELD.matcher(json);
     while (matcher.find()) {
       if (field.equals(matcher.group(1))) {
@@ -405,7 +405,7 @@ public final class JsonCinematicRepository implements CinematicRepository {
     return sb.toString();
   }
 
-  private static String encodeString(String value) {
+  static String encodeString(String value) {
     StringBuilder sb = new StringBuilder(value.length() + 2);
     sb.append('"');
     for (int i = 0; i < value.length(); i++) {

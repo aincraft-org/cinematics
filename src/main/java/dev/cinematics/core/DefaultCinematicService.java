@@ -5,6 +5,7 @@ import dev.cinematics.api.CameraPose;
 import dev.cinematics.api.CinematicResult;
 import dev.cinematics.api.CinematicScene;
 import dev.cinematics.api.CinematicService;
+import dev.cinematics.api.ExperienceService;
 import dev.cinematics.api.OverlayCue;
 import dev.cinematics.api.PlaybackSnapshot;
 import dev.cinematics.api.PropCue;
@@ -26,14 +27,31 @@ public final class DefaultCinematicService implements CinematicService {
 
   private final CinematicRepository repository;
   private final ConcurrentMap<String, CinematicDraft> drafts = new ConcurrentHashMap<>();
-  private final ConcurrentMap<UUID, Session> sessions = new ConcurrentHashMap<>();
+  private final PlayerSessions sessions;
+  private final DefaultExperienceService experiences;
   private final Object mutationLock = new Object();
 
   public DefaultCinematicService(CinematicRepository repository) {
+    this(repository, new MemoryExperienceRepository());
+  }
+
+  public DefaultCinematicService(
+      CinematicRepository repository, ExperienceRepository experienceRepository) {
     this.repository = Objects.requireNonNull(repository, "repository");
+    this.sessions = new PlayerSessions();
+    this.experiences =
+        new DefaultExperienceService(
+            this,
+            this.sessions,
+            Objects.requireNonNull(experienceRepository, "experienceRepository"));
     for (CinematicDraft draft : repository.loadAll()) {
       drafts.put(draft.name(), draft);
     }
+  }
+
+  /** Experience director sharing this service's exclusive playback sessions. */
+  public ExperienceService experiences() {
+    return experiences;
   }
 
   @Override
@@ -155,9 +173,6 @@ public final class DefaultCinematicService implements CinematicService {
       return CinematicResult.INVALID_NAME;
     }
     synchronized (mutationLock) {
-      if (sessions.containsKey(playerId)) {
-        return CinematicResult.ALREADY_PLAYING;
-      }
       CinematicDraft draft = drafts.get(normalized);
       if (draft == null) {
         return CinematicResult.UNKNOWN_SCENE;
@@ -166,38 +181,49 @@ public final class DefaultCinematicService implements CinematicService {
       if (complete.isEmpty()) {
         return CinematicResult.TOO_FEW_KEYFRAMES;
       }
-      sessions.put(playerId, new Session(complete.get(), currentPose));
-      return CinematicResult.SUCCESS;
+      return sessions.occupy(playerId, new ScenePlayback(complete.get(), currentPose));
     }
   }
 
   @Override
   public Optional<PlaybackSnapshot> stop(UUID playerId) {
     Objects.requireNonNull(playerId, "playerId");
-    Session session = sessions.remove(playerId);
-    if (session == null) {
+    Optional<Playback> session = sessions.remove(playerId);
+    if (session.isEmpty()) {
       return Optional.empty();
     }
-    return Optional.of(PlaybackSnapshot.restored(session.restorePose));
+    return Optional.of(PlaybackSnapshot.restored(session.get().restorePose()));
   }
 
   @Override
   public Optional<PlaybackSnapshot> samplePlayback(UUID playerId, double elapsedSeconds) {
     Objects.requireNonNull(playerId, "playerId");
-    Session session = sessions.get(playerId);
-    if (session == null) {
+    Optional<Playback> current = sessions.get(playerId);
+    if (current.isEmpty()) {
       return Optional.empty();
     }
-    if (elapsedSeconds >= session.scene.durationSeconds()) {
-      sessions.remove(playerId, session);
-      return Optional.of(PlaybackSnapshot.restored(session.restorePose));
+    if (current.get() instanceof ExperiencePlayback) {
+      return experiences
+          .sample(playerId, elapsedSeconds)
+          .map(
+              snapshot ->
+                  new PlaybackSnapshot(
+                      snapshot.pose(), snapshot.shaders(), snapshot.props(), snapshot.playing()));
     }
-    return Optional.of(PlaybackSnapshot.playing(session.scene.sample(elapsedSeconds)));
+    if (!(current.get() instanceof ScenePlayback session)) {
+      return Optional.empty();
+    }
+    if (elapsedSeconds >= session.scene().durationSeconds()) {
+      sessions.remove(playerId, session);
+      return Optional.of(PlaybackSnapshot.restored(session.restorePose()));
+    }
+    return Optional.of(PlaybackSnapshot.playing(session.scene().sample(elapsedSeconds)));
   }
 
   public void close() {
     sessions.clear();
     drafts.clear();
+    experiences.close();
     repository.close();
   }
 
@@ -216,16 +242,6 @@ public final class DefaultCinematicService implements CinematicService {
       drafts.put(normalized, next);
       repository.save(next);
       return CinematicResult.SUCCESS;
-    }
-  }
-
-  private static final class Session {
-    private final CinematicScene scene;
-    private final CameraPose restorePose;
-
-    private Session(CinematicScene scene, CameraPose restorePose) {
-      this.scene = scene;
-      this.restorePose = restorePose;
     }
   }
 }
