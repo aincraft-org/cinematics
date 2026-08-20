@@ -89,15 +89,31 @@ Audience is a session field, not a world clone. Instancing is Future.
 
 Quit and plugin disable always restore (never leave the player stranded in the studio).
 
-### Beats
+### Scene graph (frames)
 
-Sealed `ExperienceBeat`:
+This is not a GPU render graph. It is a **shot graph**: named points in the world, keyframes on a shot, frames as nodes, `next` as the edge.
 
-- **`TimelineBeat(id, sceneName)`** — existing `CinematicScene`. Completes at last keyframe (or skip). Local `t` is elapsed since the beat started.
-- **`StudioBeat(id, camera, actors, prompt)`** — held camera. Completes on pick (or skip). `ActorPlacement` is presentation: `actorId`, `classKey`, `displayName`, `propId`, `pose`. Clicking fires `ClassPicked(player, experience, classKey, actorId)` and completes the beat. This repo does not apply a kit.
-- **`TransitionBeat(id, overlayId, durationSeconds)`** — overlay for the whole window (typically `darkness` / `blindness`). Completes at duration.
+```text
+points (world poses)          gate, tower, warrior-cam
+        ▲
+        │ referenced by
+keyframes on a path           t=0 at gate → t=4 at tower
+        ▲
+        │ owned by
+PATH frame                    "flyover"  --next-->  FADE "black"  --next-->  HOLD "class-select"
+```
 
-An experience has one or more beats. Duplicate beat ids are rejected. A timeline beat that names an unknown or incomplete scene is rejected at **start**, not at save (scenes may be authored after the experience).
+- **Point** — named `CameraPose` (stand somewhere, save it). Path keyframes and hold frames reuse points. Slice 1 still inlines poses inside `CinematicScene`; named points are the next authoring step.
+- **Frame** — a node the director is *in*. Sealed `ExperienceFrame`:
+  - **`PathFrame(id, sceneName, next)`** — play that scene’s keyframe polyline. Completes at last keyframe.
+  - **`FadeFrame(id, overlayId, durationSeconds, next)`** — overlay for the whole duration (opening/closing). Camera is the next path’s first keyframe when there is one, otherwise the restore pose.
+  - **`HoldFrame`** (later) — parked camera + actors until pick/skip.
+- **Edge** — `next` (one successor). A linear experience is a chain. Branching (pick warrior vs mage) is extra outgoing edges later — not in this slice.
+- **Experience** — `entry` frame id + the frame map. `Experience.load(beats)` still works: it compiles a `TimelineBeat` list into a PathFrame chain.
+
+Duplicate frame ids are rejected. `next` must name a frame in the same graph or be empty (end). Cycles from `entry` are rejected. A PathFrame whose scene is missing is rejected at **start**, not at save.
+
+Authoring sugar: `/cinematic experience beat add` appends a PathFrame onto the current tail (`next` was empty).
 
 ### Snapshots
 

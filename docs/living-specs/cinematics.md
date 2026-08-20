@@ -6,7 +6,7 @@
 
 ## Intent
 
-A standalone Paper plugin that directs **out-of-body experiences**: take a player's camera, run a named sequence of beats (cutscene, studio, fade), then restore or hand off. Vanilla clients must work — overlays are server-triggered post/core effects, not Iris/OptiFine packs.
+A standalone Paper plugin that directs **out-of-body experiences**: take a player's camera, walk a named **scene graph of frames** (path, fade, later hold), then restore or hand off. Opening transitions and full cinematics are the same graph with different sizes. Vanilla clients must work — overlays are server-triggered post/core effects, not Iris/OptiFine packs.
 
 Success looks like `first-join`: fade, fly a camera path, park in a class-select studio until the player picks a mannequin, fade, fire `ClassPicked` with a class key. Professions/kits own stats and loadouts. This plugin owns presentation and camera.
 
@@ -17,7 +17,8 @@ Success looks like `first-join`: fade, fly a camera path, park in a class-select
 - Timed shader overlay cues and timed prop cues
 - Sampling at elapsed time `t` in `[0, duration]`
 - Playback sessions (play / stop / natural completion / restore)
-- Named **experiences**: ordered beats (timeline, studio, transition) with audience and completion
+- Named **experiences**: a scene graph of frames (`PathFrame`, `FadeFrame`, later hold) linked by `next`
+- Ordered timeline beats as sugar that compile into a PathFrame chain
 - Class-select **presentation** (held camera, actors, pick event) — not class data
 - Audience policy: subject / spectators / public
 - Operator command using the terms **camera**, **shaders**, **props**, plus **experience**
@@ -50,7 +51,7 @@ Success looks like `first-join`: fade, fly a camera path, park in a class-select
 - Quit and plugin disable always restore — never leave the player in a studio.
 - A second play/start for the same player is rejected (`ALREADY_PLAYING`) until stop
   or completion. Scene play and experience start share that slot.
-- An experience has at least one beat; beat ids are unique inside the experience.
+- An experience has at least one frame; frame ids are unique; `next` is empty or names a frame in the same graph; the walk from `entry` is acyclic.
 - Public API types do not mention Bukkit `World` or `Player`.
 - Class keys on studio actors are opaque strings; this plugin does not apply kits.
 
@@ -82,13 +83,15 @@ Success looks like `first-join`: fade, fly a camera path, park in a class-select
 - [x] Experience director: named flows of timeline beats, shared exclusive session
 - [x] Experience JSON under `<data>/experiences/`
 - [x] `/cinematic experience` create / beat add / play / list
+- [x] Scene graph: frames with `next` (path + fade); beat lists compile to a chain
 
 ### Current notes
 Authoring for scenes is add-only (create, append keyframe/cue, list, play/stop). There is no remove/replace, preview, skip, freeze, or text/sound track yet. Players can still walk and see their own body during play. Experiences are the active build surface.
 
 ## Next
 
-- [ ] Transition beats (fade in/out overlays with duration)
+- [ ] Named points catalog (keyframes/holds reference point ids instead of inlining poses)
+- [ ] Hold frames (class-select studio) on the graph — was studio beats
 - [ ] Studio beats: held camera, actor placements, `pick`, `ClassPicked` event
 - [ ] Freeze the watching player during play (cancel move/look, optional hide self)
 - [ ] Player skip (sneak or `/cinematic skip`) that still restores/clears or advances
@@ -126,6 +129,7 @@ Authoring for scenes is add-only (create, append keyframe/cue, list, play/stop).
 | 2026-08-19 | Audience is a session field, not world instancing | Instancing is a different product; start with shared locations |
 | 2026-08-19 | Flows (beat sequences) live in this plugin | Join = fade → flyover → studio → fade should be one named experience |
 | 2026-08-19 | Quit always restores | Never trap a player in a studio on disconnect |
+| 2026-08-19 | Experiences are a scene graph of frames with `next` | Openings and full cinematics share one structure; a list of beats is just a chain |
 
 ## Open questions
 
