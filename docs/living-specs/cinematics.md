@@ -79,9 +79,9 @@ Success looks like `first-join`: fade, fly a camera path, park in a class-select
 - [x] Paper adapter + `/cinematic` camera / shaders / props / play / stop
 - [x] Standalone plugin JAR (not part of Extras)
 - [x] Per-viewer display props (`visibleByDefault=false`, shown only to the watching player)
-- [ ] Experience director: named flows of timeline beats, shared exclusive session
-- [ ] Experience JSON under `<data>/experiences/`
-- [ ] `/cinematic experience` create / beat add / play / list
+- [x] Experience director: named flows of timeline beats, shared exclusive session
+- [x] Experience JSON under `<data>/experiences/`
+- [x] `/cinematic experience` create / beat add / play / list
 
 ### Current notes
 Authoring for scenes is add-only (create, append keyframe/cue, list, play/stop). There is no remove/replace, preview, skip, freeze, or text/sound track yet. Players can still walk and see their own body during play. Experiences are the active build surface.
