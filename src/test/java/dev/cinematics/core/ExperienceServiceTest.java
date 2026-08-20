@@ -151,6 +151,36 @@ class ExperienceServiceTest {
   }
 
   @Test
+  void cinematicSamplePlaybackReadsExperienceSessions() {
+    DefaultCinematicService cinematic = newCinematic();
+    cinematic.save(twoPointScene());
+    ExperienceService experiences = cinematic.experiences();
+    experiences.save(oneBeatJoin());
+    CameraPose original = pose("world", 100, 70, 100);
+    assertEquals(CinematicResult.SUCCESS, experiences.start(playerId, "join", original));
+
+    var mid = cinematic.samplePlayback(playerId, 4.0).orElseThrow();
+    assertTrue(mid.playing());
+    assertTrue(mid.shaders().contains("darkness"));
+    assertFalse(mid.props().isEmpty());
+  }
+
+  @Test
+  void addTimelineBeatCreatesOrAppendsAnExperience() {
+    DefaultCinematicService cinematic = newCinematic();
+    ExperienceService experiences = cinematic.experiences();
+    assertEquals(
+        CinematicResult.SUCCESS,
+        experiences.addTimelineBeat("join", new TimelineBeat("flyover", "intro")));
+    Experience created = experiences.experience("join").orElseThrow();
+    assertEquals(1, created.beats().size());
+    assertEquals(
+        CinematicResult.SUCCESS,
+        experiences.addTimelineBeat("join", new TimelineBeat("land", "outro")));
+    assertEquals(2, experiences.experience("join").orElseThrow().beats().size());
+  }
+
+  @Test
   void savedExperienceReloadsFromTheRepository() {
     Path scenesDir = tempDir.resolve("scenes");
     Path experiencesDir = tempDir.resolve("experiences");

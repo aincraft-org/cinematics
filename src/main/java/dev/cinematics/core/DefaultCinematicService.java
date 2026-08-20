@@ -199,7 +199,18 @@ public final class DefaultCinematicService implements CinematicService {
   public Optional<PlaybackSnapshot> samplePlayback(UUID playerId, double elapsedSeconds) {
     Objects.requireNonNull(playerId, "playerId");
     Optional<Playback> current = sessions.get(playerId);
-    if (current.isEmpty() || !(current.get() instanceof ScenePlayback session)) {
+    if (current.isEmpty()) {
+      return Optional.empty();
+    }
+    if (current.get() instanceof ExperiencePlayback) {
+      return experiences
+          .sample(playerId, elapsedSeconds)
+          .map(
+              snapshot ->
+                  new PlaybackSnapshot(
+                      snapshot.pose(), snapshot.shaders(), snapshot.props(), snapshot.playing()));
+    }
+    if (!(current.get() instanceof ScenePlayback session)) {
       return Optional.empty();
     }
     if (elapsedSeconds >= session.scene().durationSeconds()) {

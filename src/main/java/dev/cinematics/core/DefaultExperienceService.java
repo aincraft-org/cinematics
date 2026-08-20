@@ -5,6 +5,7 @@ import dev.cinematics.api.CameraPose;
 import dev.cinematics.api.CinematicResult;
 import dev.cinematics.api.CinematicScene;
 import dev.cinematics.api.CinematicService;
+import dev.cinematics.api.CompletionAction;
 import dev.cinematics.api.Experience;
 import dev.cinematics.api.ExperienceBeat;
 import dev.cinematics.api.ExperienceService;
@@ -48,6 +49,36 @@ final class DefaultExperienceService implements ExperienceService {
     synchronized (mutationLock) {
       experiences.put(experience.name(), experience);
       repository.save(experience);
+      return CinematicResult.SUCCESS;
+    }
+  }
+
+  @Override
+  public CinematicResult addTimelineBeat(String experienceName, TimelineBeat beat) {
+    Objects.requireNonNull(beat, "beat");
+    String normalized = CinematicScene.normalizeName(experienceName);
+    if (normalized == null) {
+      return CinematicResult.INVALID_NAME;
+    }
+    synchronized (mutationLock) {
+      Experience existing = experiences.get(normalized);
+      List<ExperienceBeat> beats = new ArrayList<>();
+      Audience audience = Audience.SUBJECT;
+      CompletionAction onComplete = CompletionAction.RESTORE;
+      if (existing != null) {
+        beats.addAll(existing.beats());
+        audience = existing.audience();
+        onComplete = existing.onComplete();
+      }
+      beats.add(beat);
+      Experience next;
+      try {
+        next = Experience.load(normalized, audience, onComplete, beats);
+      } catch (IllegalArgumentException invalid) {
+        return CinematicResult.INVALID_CUE;
+      }
+      experiences.put(normalized, next);
+      repository.save(next);
       return CinematicResult.SUCCESS;
     }
   }
@@ -115,25 +146,30 @@ final class DefaultExperienceService implements ExperienceService {
     double elapsed = Double.isFinite(elapsedSeconds) ? elapsedSeconds : 0.0;
     double remaining = elapsed;
     List<CinematicScene> scenes = playback.scenes();
+    ExperienceSnapshot sampled = null;
     for (int i = 0; i < scenes.size(); i++) {
       CinematicScene scene = scenes.get(i);
       double duration = scene.durationSeconds();
       boolean last = i == scenes.size() - 1;
       if (!last && remaining >= duration) {
         remaining -= duration;
-        continue;
-      }
-      if (last && remaining >= duration) {
+      } else if (last && remaining >= duration) {
         sessions.remove(playerId, playback);
-        return Optional.of(restored(playback));
+        sampled = restored(playback);
+        i = scenes.size();
+      } else {
+        String beatId = playback.experience().beats().get(i).id();
+        sampled =
+            ExperienceSnapshot.playing(
+                scene.sample(remaining), playback.experience().audience(), i, beatId);
+        i = scenes.size();
       }
-      String beatId = playback.experience().beats().get(i).id();
-      return Optional.of(
-          ExperienceSnapshot.playing(
-              scene.sample(remaining), playback.experience().audience(), i, beatId));
     }
-    sessions.remove(playerId, playback);
-    return Optional.of(restored(playback));
+    if (sampled == null) {
+      sessions.remove(playerId, playback);
+      sampled = restored(playback);
+    }
+    return Optional.of(sampled);
   }
 
   void close() {

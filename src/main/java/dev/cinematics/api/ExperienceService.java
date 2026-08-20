@@ -16,6 +16,12 @@ public interface ExperienceService {
    */
   CinematicResult save(Experience experience);
 
+  /**
+   * Appends a timeline beat, creating the experience with default subject/restore if it does not
+   * exist yet.
+   */
+  CinematicResult addTimelineBeat(String experienceName, TimelineBeat beat);
+
   /** The complete experience for {@code name}, if present. */
   Optional<Experience> experience(String name);
 
