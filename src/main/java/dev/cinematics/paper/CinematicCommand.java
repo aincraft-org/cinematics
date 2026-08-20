@@ -5,9 +5,12 @@ import dev.cinematics.api.CameraPose;
 import dev.cinematics.api.CinematicResult;
 import dev.cinematics.api.CinematicScene;
 import dev.cinematics.api.CinematicService;
+import dev.cinematics.api.Experience;
+import dev.cinematics.api.ExperienceService;
 import dev.cinematics.api.OverlayCue;
 import dev.cinematics.api.PlaybackSnapshot;
 import dev.cinematics.api.PropCue;
+import dev.cinematics.api.TimelineBeat;
 import io.papermc.paper.command.brigadier.BasicCommand;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import java.util.ArrayList;
@@ -27,13 +30,20 @@ public final class CinematicCommand implements BasicCommand {
 
   static final String USE_PERMISSION = "cinematics.use";
   private static final List<String> ACTIONS =
-      List.of("create", "camera", "shaders", "props", "play", "stop", "list");
+      List.of("create", "camera", "shaders", "props", "play", "stop", "list", "experience");
+  private static final List<String> EXPERIENCE_ACTIONS = List.of("create", "beat", "play", "list");
 
   private final CinematicService cinematicService;
+  private final ExperienceService experienceService;
   private final PaperCinematicController controller;
 
-  public CinematicCommand(CinematicService cinematicService, PaperCinematicController controller) {
+  public CinematicCommand(
+      CinematicService cinematicService,
+      ExperienceService experienceService,
+      PaperCinematicController controller) {
     this.cinematicService = java.util.Objects.requireNonNull(cinematicService, "cinematicService");
+    this.experienceService =
+        java.util.Objects.requireNonNull(experienceService, "experienceService");
     this.controller = java.util.Objects.requireNonNull(controller, "controller");
   }
 
@@ -44,6 +54,15 @@ public final class CinematicCommand implements BasicCommand {
     PROPS,
     PLAY,
     STOP,
+    LIST,
+    EXPERIENCE,
+    UNKNOWN
+  }
+
+  enum ExperienceAction {
+    CREATE,
+    BEAT,
+    PLAY,
     LIST,
     UNKNOWN
   }
@@ -60,8 +79,34 @@ public final class CinematicCommand implements BasicCommand {
       case "play" -> Action.PLAY;
       case "stop" -> Action.STOP;
       case "list" -> Action.LIST;
+      case "experience" -> Action.EXPERIENCE;
       default -> Action.UNKNOWN;
     };
+  }
+
+  static ExperienceAction parseExperienceAction(String[] args) {
+    if (args.length < 2) {
+      return ExperienceAction.UNKNOWN;
+    }
+    return switch (args[1].toLowerCase(Locale.ROOT)) {
+      case "create" -> ExperienceAction.CREATE;
+      case "beat" -> ExperienceAction.BEAT;
+      case "play" -> ExperienceAction.PLAY;
+      case "list" -> ExperienceAction.LIST;
+      default -> ExperienceAction.UNKNOWN;
+    };
+  }
+
+  static List<String> experienceSuggestions(String input) {
+    String prefix = input == null ? "" : input.toLowerCase(Locale.ROOT);
+    List<String> result = new ArrayList<>();
+    for (String action : EXPERIENCE_ACTIONS) {
+      if (action.startsWith(prefix)) {
+        result.add(action);
+      }
+    }
+    result.sort(null);
+    return result;
   }
 
   static List<String> suggestions(String input) {
@@ -96,6 +141,7 @@ public final class CinematicCommand implements BasicCommand {
       case PLAY -> play(sender, args);
       case STOP -> stop(sender, args);
       case LIST -> list(sender);
+      case EXPERIENCE -> experience(sender, args);
       default -> sendUsage(sender);
     }
   }
@@ -104,6 +150,9 @@ public final class CinematicCommand implements BasicCommand {
   public Collection<String> suggest(CommandSourceStack stack, String[] args) {
     if (args.length == 0 || args.length == 1) {
       return suggestions(args.length == 0 ? "" : args[0]);
+    }
+    if (parseAction(args) == Action.EXPERIENCE && args.length == 2) {
+      return experienceSuggestions(args[1]);
     }
     if (args.length == 2
         && (parseAction(args) == Action.CAMERA
@@ -280,6 +329,89 @@ public final class CinematicCommand implements BasicCommand {
     return player;
   }
 
+  private void experience(CommandSender sender, String[] args) {
+    switch (parseExperienceAction(args)) {
+      case CREATE -> experienceCreate(sender, args);
+      case BEAT -> experienceBeat(sender, args);
+      case PLAY -> experiencePlay(sender, args);
+      case LIST -> experienceList(sender);
+      default -> sendExperienceUsage(sender);
+    }
+  }
+
+  private void experienceCreate(CommandSender sender, String[] args) {
+    if (args.length < 3) {
+      sender.sendMessage("Usage: /cinematic experience create <name>");
+      return;
+    }
+    if (CinematicScene.normalizeName(args[2]) == null) {
+      sender.sendMessage(describe(CinematicResult.INVALID_NAME, args[2]));
+      return;
+    }
+    if (experienceService.experience(args[2]).isPresent()) {
+      sender.sendMessage(describe(CinematicResult.ALREADY_EXISTS, args[2]));
+      return;
+    }
+    sender.sendMessage(
+        "Add the first beat with /cinematic experience beat add "
+            + args[2]
+            + " timeline <beatId> <scene>");
+  }
+
+  private void experienceBeat(CommandSender sender, String[] args) {
+    if (args.length < 7
+        || !"add".equalsIgnoreCase(args[2])
+        || !"timeline".equalsIgnoreCase(args[4])) {
+      sender.sendMessage("Usage: /cinematic experience beat add <name> timeline <beatId> <scene>");
+      return;
+    }
+    TimelineBeat beat;
+    try {
+      beat = new TimelineBeat(args[5], args[6]);
+    } catch (IllegalArgumentException invalid) {
+      sender.sendMessage("Invalid beat id or scene name (use 1–64 [a-z0-9_-] characters).");
+      return;
+    }
+    sender.sendMessage(describe(experienceService.addTimelineBeat(args[3], beat), args[3]));
+  }
+
+  private void experiencePlay(CommandSender sender, String[] args) {
+    if (args.length < 3) {
+      sender.sendMessage("Usage: /cinematic experience play <name> [player]");
+      return;
+    }
+    Player target = resolveTarget(sender, args, 3);
+    if (target == null) {
+      return;
+    }
+    CinematicResult result = controller.playExperience(target, args[2]);
+    if (result == CinematicResult.SUCCESS) {
+      sender.sendMessage("Playing experience " + args[2] + " for " + target.getName() + ".");
+      return;
+    }
+    sender.sendMessage(describe(result, args[2]));
+  }
+
+  private void experienceList(CommandSender sender) {
+    Collection<Experience> experiences = experienceService.experiences();
+    if (experiences.isEmpty()) {
+      sender.sendMessage("No cinematic experiences.");
+      return;
+    }
+    sender.sendMessage("Cinematic experiences:");
+    for (Experience experience : experiences) {
+      sender.sendMessage("  " + experience.name() + " — " + experience.beats().size() + " beats");
+    }
+  }
+
+  private List<String> experienceNames() {
+    List<String> names = new ArrayList<>();
+    for (Experience experience : experienceService.experiences()) {
+      names.add(experience.name());
+    }
+    return names;
+  }
+
   private List<String> sceneNames() {
     List<String> names = new ArrayList<>();
     for (CinematicScene scene : cinematicService.scenes()) {
@@ -321,6 +453,17 @@ public final class CinematicCommand implements BasicCommand {
     sender.sendMessage("       /cinematic play <name> [player]");
     sender.sendMessage("       /cinematic stop [player]");
     sender.sendMessage("       /cinematic list");
+    sender.sendMessage("       /cinematic experience create <name>");
+    sender.sendMessage("       /cinematic experience beat add <name> timeline <beatId> <scene>");
+    sender.sendMessage("       /cinematic experience play <name> [player]");
+    sender.sendMessage("       /cinematic experience list");
+  }
+
+  private static void sendExperienceUsage(CommandSender sender) {
+    sender.sendMessage("Usage: /cinematic experience create <name>");
+    sender.sendMessage("       /cinematic experience beat add <name> timeline <beatId> <scene>");
+    sender.sendMessage("       /cinematic experience play <name> [player]");
+    sender.sendMessage("       /cinematic experience list");
   }
 
   private static List<String> filter(List<String> candidates, String prefix) {

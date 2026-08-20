@@ -3,6 +3,7 @@ package dev.cinematics.paper;
 import dev.cinematics.api.CameraPose;
 import dev.cinematics.api.CinematicResult;
 import dev.cinematics.api.CinematicService;
+import dev.cinematics.api.ExperienceService;
 import dev.cinematics.api.PlaybackSnapshot;
 import dev.cinematics.api.PropCue;
 import io.papermc.paper.registry.RegistryAccess;
@@ -49,18 +50,32 @@ public final class PaperCinematicController implements Listener {
 
   private final Plugin plugin;
   private final CinematicService cinematicService;
+  private final ExperienceService experienceService;
   private final ConcurrentMap<UUID, ScheduledTask> tickers = new ConcurrentHashMap<>();
   private final ConcurrentMap<UUID, AppliedState> applied = new ConcurrentHashMap<>();
 
-  public PaperCinematicController(Plugin plugin, CinematicService cinematicService) {
+  public PaperCinematicController(
+      Plugin plugin, CinematicService cinematicService, ExperienceService experienceService) {
     this.plugin = Objects.requireNonNull(plugin, "plugin");
     this.cinematicService = Objects.requireNonNull(cinematicService, "cinematicService");
+    this.experienceService = Objects.requireNonNull(experienceService, "experienceService");
   }
 
   public CinematicResult play(Player player, String sceneName) {
     Objects.requireNonNull(player, "player");
     CinematicResult result =
         cinematicService.play(player.getUniqueId(), sceneName, poseOf(player.getLocation()));
+    if (result != CinematicResult.SUCCESS) {
+      return result;
+    }
+    startTicker(player);
+    return CinematicResult.SUCCESS;
+  }
+
+  public CinematicResult playExperience(Player player, String experienceName) {
+    Objects.requireNonNull(player, "player");
+    CinematicResult result =
+        experienceService.start(player.getUniqueId(), experienceName, poseOf(player.getLocation()));
     if (result != CinematicResult.SUCCESS) {
       return result;
     }

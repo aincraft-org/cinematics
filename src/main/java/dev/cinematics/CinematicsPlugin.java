@@ -1,6 +1,7 @@
 package dev.cinematics;
 
 import dev.cinematics.api.CinematicService;
+import dev.cinematics.api.ExperienceService;
 import dev.cinematics.core.DefaultCinematicService;
 import dev.cinematics.core.JsonCinematicRepository;
 import dev.cinematics.core.JsonExperienceRepository;
@@ -34,7 +35,10 @@ public final class CinematicsPlugin extends JavaPlugin {
             new JsonExperienceRepository(dataDir.resolve("experiences")));
     Bukkit.getServicesManager()
         .register(CinematicService.class, cinematicService, this, ServicePriority.Normal);
-    cinematicController = new PaperCinematicController(this, cinematicService);
+    ExperienceService experienceService = cinematicService.experiences();
+    Bukkit.getServicesManager()
+        .register(ExperienceService.class, experienceService, this, ServicePriority.Normal);
+    cinematicController = new PaperCinematicController(this, cinematicService, experienceService);
     Bukkit.getPluginManager().registerEvents(cinematicController, this);
     getLifecycleManager()
         .registerEventHandler(
@@ -46,7 +50,8 @@ public final class CinematicsPlugin extends JavaPlugin {
                         "cinematic",
                         "Create cinematic camera scenes with shaders and props.",
                         List.of("cinematics", "cine"),
-                        new CinematicCommand(cinematicService, cinematicController)));
+                        new CinematicCommand(
+                            cinematicService, experienceService, cinematicController)));
     getLogger()
         .info(
             "Cinematics enabled (scenes at "
