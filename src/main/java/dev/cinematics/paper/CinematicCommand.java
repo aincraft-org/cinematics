@@ -302,6 +302,9 @@ public final class CinematicCommand implements BasicCommand {
       case TOO_FEW_KEYFRAMES ->
           "Scene " + scene + " needs at least two camera keyframes before it can play.";
       case UNKNOWN_SCENE -> "Unknown cinematic scene: " + scene + ".";
+      case UNKNOWN_EXPERIENCE -> "Unknown cinematic experience: " + scene + ".";
+      case EMPTY_EXPERIENCE -> "Experience " + scene + " needs at least one beat.";
+      case NOT_PLAYING -> "That player is not playing a cinematic.";
       case INVALID_NAME -> "Invalid scene name (use 1–64 [a-z0-9_-] characters).";
       case ALREADY_EXISTS -> "Cinematic scene " + scene + " already exists.";
       case ALREADY_PLAYING -> "That player is already playing a cinematic.";
