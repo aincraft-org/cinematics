@@ -4,6 +4,9 @@ import dev.cinematics.api.Audience;
 import dev.cinematics.api.CompletionAction;
 import dev.cinematics.api.Experience;
 import dev.cinematics.api.ExperienceBeat;
+import dev.cinematics.api.ExperienceFrame;
+import dev.cinematics.api.FadeFrame;
+import dev.cinematics.api.PathFrame;
 import dev.cinematics.api.TimelineBeat;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -112,18 +115,14 @@ public final class JsonExperienceRepository implements ExperienceRepository {
             JsonCinematicRepository.encodeString(
                 experience.onComplete().name().toLowerCase(Locale.ROOT)))
         .append(",\n");
-    sb.append("  \"beats\": [\n");
-    List<ExperienceBeat> beats = experience.beats();
-    for (int i = 0; i < beats.size(); i++) {
-      ExperienceBeat beat = beats.get(i);
-      if (beat instanceof TimelineBeat timeline) {
-        sb.append("    {\"id\": ")
-            .append(JsonCinematicRepository.encodeString(timeline.id()))
-            .append(", \"type\": \"timeline\", \"scene\": ")
-            .append(JsonCinematicRepository.encodeString(timeline.sceneName()))
-            .append('}');
-      }
-      if (i + 1 < beats.size()) {
+    sb.append("  \"entry\": ")
+        .append(JsonCinematicRepository.encodeString(experience.entry()))
+        .append(",\n");
+    sb.append("  \"frames\": [\n");
+    List<ExperienceFrame> frames = experience.frames();
+    for (int i = 0; i < frames.size(); i++) {
+      sb.append("    ").append(encodeFrame(frames.get(i)));
+      if (i + 1 < frames.size()) {
         sb.append(',');
       }
       sb.append('\n');
@@ -131,6 +130,33 @@ public final class JsonExperienceRepository implements ExperienceRepository {
     sb.append("  ]\n");
     sb.append("}\n");
     return sb.toString();
+  }
+
+  private static String encodeFrame(ExperienceFrame frame) {
+    String nextField =
+        frame
+            .next()
+            .map(id -> ", \"next\": " + JsonCinematicRepository.encodeString(id))
+            .orElse("");
+    if (frame instanceof PathFrame path) {
+      return "{\"id\": "
+          + JsonCinematicRepository.encodeString(path.id())
+          + ", \"type\": \"path\", \"scene\": "
+          + JsonCinematicRepository.encodeString(path.sceneName())
+          + nextField
+          + "}";
+    }
+    if (frame instanceof FadeFrame fade) {
+      return "{\"id\": "
+          + JsonCinematicRepository.encodeString(fade.id())
+          + ", \"type\": \"fade\", \"overlay\": "
+          + JsonCinematicRepository.encodeString(fade.overlayId())
+          + ", \"duration\": "
+          + fade.durationSeconds()
+          + nextField
+          + "}";
+    }
+    return "{}";
   }
 
   static Experience decode(String json) {
@@ -144,15 +170,67 @@ public final class JsonExperienceRepository implements ExperienceRepository {
     Audience audience = parseAudience(JsonCinematicRepository.stringField(json, "audience"));
     CompletionAction onComplete =
         parseCompletion(JsonCinematicRepository.stringField(json, "on_complete"));
-    List<ExperienceBeat> beats = new ArrayList<>();
-    for (String body : JsonCinematicRepository.objectArrayBodies(json, "beats")) {
-      ExperienceBeat beat = decodeBeat(body);
-      if (beat != null) {
-        beats.add(beat);
+    List<ExperienceFrame> frames = new ArrayList<>();
+    for (String body : JsonCinematicRepository.objectArrayBodies(json, "frames")) {
+      ExperienceFrame frame = decodeFrame(body);
+      if (frame != null) {
+        frames.add(frame);
       }
     }
+    if (frames.isEmpty()) {
+      List<ExperienceBeat> beats = new ArrayList<>();
+      for (String body : JsonCinematicRepository.objectArrayBodies(json, "beats")) {
+        ExperienceBeat beat = decodeBeat(body);
+        if (beat != null) {
+          beats.add(beat);
+        }
+      }
+      try {
+        return Experience.load(name, audience, onComplete, beats);
+      } catch (IllegalArgumentException invalid) {
+        return null;
+      }
+    }
+    String entry = JsonCinematicRepository.stringField(json, "entry");
+    if (entry == null) {
+      entry = frames.getFirst().id();
+    }
     try {
-      return Experience.load(name, audience, onComplete, beats);
+      return Experience.graph(name, audience, onComplete, entry, frames);
+    } catch (IllegalArgumentException invalid) {
+      return null;
+    }
+  }
+
+  private static ExperienceFrame decodeFrame(String body) {
+    String id = JsonCinematicRepository.stringField(body, "id");
+    String type = JsonCinematicRepository.stringField(body, "type");
+    if (id == null) {
+      return null;
+    }
+    String nextRaw = JsonCinematicRepository.stringField(body, "next");
+    java.util.Optional<String> next =
+        nextRaw == null || nextRaw.isBlank()
+            ? java.util.Optional.empty()
+            : java.util.Optional.of(nextRaw);
+    String kind = type == null ? "path" : type.trim().toLowerCase(Locale.ROOT);
+    try {
+      if ("fade".equals(kind)) {
+        String overlay = JsonCinematicRepository.stringField(body, "overlay");
+        Double duration = JsonCinematicRepository.numberField(body, "duration");
+        if (overlay == null || duration == null) {
+          return null;
+        }
+        return new FadeFrame(id, overlay, duration, next);
+      }
+      if ("path".equals(kind) || "timeline".equals(kind)) {
+        String scene = JsonCinematicRepository.stringField(body, "scene");
+        if (scene == null) {
+          return null;
+        }
+        return new PathFrame(id, scene, next);
+      }
+      return null;
     } catch (IllegalArgumentException invalid) {
       return null;
     }
@@ -165,7 +243,9 @@ public final class JsonExperienceRepository implements ExperienceRepository {
     if (id == null || scene == null) {
       return null;
     }
-    if (type != null && !"timeline".equals(type.trim().toLowerCase(Locale.ROOT))) {
+    if (type != null
+        && !"timeline".equals(type.trim().toLowerCase(Locale.ROOT))
+        && !"path".equals(type.trim().toLowerCase(Locale.ROOT))) {
       return null;
     }
     try {

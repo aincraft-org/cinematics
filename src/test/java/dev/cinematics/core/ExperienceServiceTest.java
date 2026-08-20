@@ -13,7 +13,9 @@ import dev.cinematics.api.CompletionAction;
 import dev.cinematics.api.Experience;
 import dev.cinematics.api.ExperienceService;
 import dev.cinematics.api.ExperienceSnapshot;
+import dev.cinematics.api.FadeFrame;
 import dev.cinematics.api.OverlayCue;
+import dev.cinematics.api.PathFrame;
 import dev.cinematics.api.PropCue;
 import dev.cinematics.api.TimelineBeat;
 import java.nio.file.Path;
@@ -113,6 +115,42 @@ class ExperienceServiceTest {
 
     assertEquals(CinematicResult.SUCCESS, experiences.save(oneBeatJoin()));
     assertEquals(CinematicResult.UNKNOWN_SCENE, experiences.start(playerId, "join", original));
+  }
+
+  @Test
+  void fadeThenPathWalksTheFrameGraph() {
+    DefaultCinematicService cinematic = newCinematic();
+    cinematic.save(twoPointScene());
+    ExperienceService experiences = cinematic.experiences();
+    Experience opening =
+        Experience.graph(
+            "opening",
+            Audience.SUBJECT,
+            CompletionAction.RESTORE,
+            "fade-in",
+            List.of(
+                new FadeFrame("fade-in", "darkness", 2.0, java.util.Optional.of("flyover")),
+                new PathFrame("flyover", "intro", java.util.Optional.empty())));
+    assertEquals(CinematicResult.SUCCESS, experiences.save(opening));
+
+    CameraPose original = pose("world", 100, 70, 100);
+    assertEquals(CinematicResult.SUCCESS, experiences.start(playerId, "opening", original));
+
+    ExperienceSnapshot fading = experiences.sample(playerId, 1.0).orElseThrow();
+    assertTrue(fading.playing());
+    assertEquals("fade-in", fading.beatId());
+    assertTrue(fading.shaders().contains("darkness"));
+    assertEquals(0.0, fading.pose().x(), 1e-9);
+    assertEquals(64.0, fading.pose().y(), 1e-9);
+
+    ExperienceSnapshot flying = experiences.sample(playerId, 2.0).orElseThrow();
+    assertTrue(flying.playing());
+    assertEquals("flyover", flying.beatId());
+    assertEquals(0.0, flying.pose().x(), 1e-9);
+
+    ExperienceSnapshot done = experiences.sample(playerId, 12.0).orElseThrow();
+    assertFalse(done.playing());
+    assertEquals(original, done.pose());
   }
 
   @Test

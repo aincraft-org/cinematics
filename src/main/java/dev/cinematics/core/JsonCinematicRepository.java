@@ -264,7 +264,7 @@ public final class JsonCinematicRepository implements CinematicRepository {
     return null;
   }
 
-  private static Double numberField(String json, String field) {
+  static Double numberField(String json, String field) {
     Matcher matcher = NUMBER_FIELD.matcher(json);
     while (matcher.find()) {
       if (field.equals(matcher.group(1))) {

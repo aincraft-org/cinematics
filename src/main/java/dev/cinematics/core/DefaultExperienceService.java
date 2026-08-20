@@ -7,9 +7,11 @@ import dev.cinematics.api.CinematicScene;
 import dev.cinematics.api.CinematicService;
 import dev.cinematics.api.CompletionAction;
 import dev.cinematics.api.Experience;
-import dev.cinematics.api.ExperienceBeat;
+import dev.cinematics.api.ExperienceFrame;
 import dev.cinematics.api.ExperienceService;
 import dev.cinematics.api.ExperienceSnapshot;
+import dev.cinematics.api.FadeFrame;
+import dev.cinematics.api.PathFrame;
 import dev.cinematics.api.TimelineBeat;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -62,18 +64,15 @@ final class DefaultExperienceService implements ExperienceService {
     }
     synchronized (mutationLock) {
       Experience existing = experiences.get(normalized);
-      List<ExperienceBeat> beats = new ArrayList<>();
-      Audience audience = Audience.SUBJECT;
-      CompletionAction onComplete = CompletionAction.RESTORE;
-      if (existing != null) {
-        beats.addAll(existing.beats());
-        audience = existing.audience();
-        onComplete = existing.onComplete();
-      }
-      beats.add(beat);
       Experience next;
       try {
-        next = Experience.load(normalized, audience, onComplete, beats);
+        if (existing == null) {
+          next =
+              Experience.load(
+                  normalized, Audience.SUBJECT, CompletionAction.RESTORE, List.of(beat));
+        } else {
+          next = existing.withTimelineBeat(beat);
+        }
       } catch (IllegalArgumentException invalid) {
         return CinematicResult.INVALID_CUE;
       }
@@ -111,16 +110,32 @@ final class DefaultExperienceService implements ExperienceService {
     if (experience == null) {
       return CinematicResult.UNKNOWN_EXPERIENCE;
     }
-    List<CinematicScene> resolved = new ArrayList<>();
-    for (ExperienceBeat beat : experience.beats()) {
-      if (!(beat instanceof TimelineBeat timeline)) {
+    List<ExperienceFrame> walk = experience.walk();
+    List<ResolvedFrame> resolved = new ArrayList<>();
+    for (int i = 0; i < walk.size(); i++) {
+      ExperienceFrame frame = walk.get(i);
+      if (frame instanceof PathFrame path) {
+        Optional<CinematicScene> scene = cinematic.scene(path.sceneName());
+        if (scene.isEmpty()) {
+          return CinematicResult.UNKNOWN_SCENE;
+        }
+        resolved.add(new ResolvedPath(path.id(), scene.get()));
+      } else if (frame instanceof FadeFrame fade) {
+        CameraPose fadePose = currentPose;
+        for (int j = i + 1; j < walk.size(); j++) {
+          if (walk.get(j) instanceof PathFrame later) {
+            Optional<CinematicScene> laterScene = cinematic.scene(later.sceneName());
+            if (laterScene.isPresent()) {
+              fadePose = laterScene.get().sample(0).camera();
+            }
+            break;
+          }
+        }
+        resolved.add(
+            new ResolvedFade(fade.id(), fade.durationSeconds(), fade.overlayId(), fadePose));
+      } else {
         return CinematicResult.UNKNOWN_SCENE;
       }
-      Optional<CinematicScene> scene = cinematic.scene(timeline.sceneName());
-      if (scene.isEmpty()) {
-        return CinematicResult.UNKNOWN_SCENE;
-      }
-      resolved.add(scene.get());
     }
     return sessions.occupy(
         playerId, new ExperiencePlayback(experience, List.copyOf(resolved), currentPose));
@@ -145,24 +160,23 @@ final class DefaultExperienceService implements ExperienceService {
     }
     double elapsed = Double.isFinite(elapsedSeconds) ? elapsedSeconds : 0.0;
     double remaining = elapsed;
-    List<CinematicScene> scenes = playback.scenes();
+    List<ResolvedFrame> frames = playback.frames();
     ExperienceSnapshot sampled = null;
-    for (int i = 0; i < scenes.size(); i++) {
-      CinematicScene scene = scenes.get(i);
-      double duration = scene.durationSeconds();
-      boolean last = i == scenes.size() - 1;
+    for (int i = 0; i < frames.size(); i++) {
+      ResolvedFrame frame = frames.get(i);
+      double duration = frame.durationSeconds();
+      boolean last = i == frames.size() - 1;
       if (!last && remaining >= duration) {
         remaining -= duration;
       } else if (last && remaining >= duration) {
         sessions.remove(playerId, playback);
         sampled = restored(playback);
-        i = scenes.size();
+        i = frames.size();
       } else {
-        String beatId = playback.experience().beats().get(i).id();
         sampled =
             ExperienceSnapshot.playing(
-                scene.sample(remaining), playback.experience().audience(), i, beatId);
-        i = scenes.size();
+                frame.sample(remaining), playback.experience().audience(), i, frame.id());
+        i = frames.size();
       }
     }
     if (sampled == null) {
