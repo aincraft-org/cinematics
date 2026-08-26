@@ -56,6 +56,7 @@ public final class CinematicsPlugin extends JavaPlugin {
     PlayerSkinDummy dummies = new PlayerSkinDummy(packets);
     CameraDolly dolly = new CameraDolly(this);
     cinematicController.attachDummies(dummies);
+    cinematicController.attachDolly(dolly);
     getLifecycleManager()
         .registerEventHandler(
             LifecycleEvents.COMMANDS,

@@ -80,6 +80,7 @@ public final class CinematicCommand implements BasicCommand {
     DUMMY_DESTROY,
     DUMMY_LIST,
     DOLLY,
+    DOLLY_RESTORE,
     UNKNOWN
   }
 
@@ -105,7 +106,7 @@ public final class CinematicCommand implements BasicCommand {
       case "list" -> Action.LIST;
       case "experience" -> Action.EXPERIENCE;
       case "dummy" -> parseDummyAction(args);
-      case "dolly" -> args.length >= 8 ? Action.DOLLY : Action.UNKNOWN;
+      case "dolly" -> parseDollyAction(args);
       default -> Action.UNKNOWN;
     };
   }
@@ -122,6 +123,16 @@ public final class CinematicCommand implements BasicCommand {
       case "list" -> Action.DUMMY_LIST;
       default -> Action.UNKNOWN;
     };
+  }
+
+  static Action parseDollyAction(String[] args) {
+    if (args.length < 2) {
+      return Action.UNKNOWN;
+    }
+    if ("restore".equalsIgnoreCase(args[1])) {
+      return args.length == 3 ? Action.DOLLY_RESTORE : Action.UNKNOWN;
+    }
+    return args.length >= 8 ? Action.DOLLY : Action.UNKNOWN;
   }
 
   static ExperienceAction parseExperienceAction(String[] args) {
@@ -188,6 +199,7 @@ public final class CinematicCommand implements BasicCommand {
       case DUMMY_DESTROY -> dummyDestroy(sender, args);
       case DUMMY_LIST -> dummyList(sender);
       case DOLLY -> dolly(sender, args);
+      case DOLLY_RESTORE -> dollyRestore(sender, args);
       default -> sendUsage(sender);
     }
   }
@@ -230,6 +242,15 @@ public final class CinematicCommand implements BasicCommand {
             || parseAction(args) == Action.DUMMY_HIDE
             || parseAction(args) == Action.DUMMY_DESTROY)) {
       return filter(dummyNames(), args[2]);
+    }
+    if (args.length == 2 && "dolly".equalsIgnoreCase(args[0])) {
+      List<String> candidates = new java.util.ArrayList<>();
+      candidates.add("restore");
+      candidates.addAll(onlinePlayerNames());
+      return filter(candidates, args[1]);
+    }
+    if (args.length == 3 && parseAction(args) == Action.DOLLY_RESTORE) {
+      return filter(onlinePlayerNames(), args[2]);
     }
     if (args.length == 2 && parseAction(args) == Action.DOLLY) {
       return filter(onlinePlayerNames(), args[1]);
@@ -483,6 +504,20 @@ public final class CinematicCommand implements BasicCommand {
             + ").");
   }
 
+  private void dollyRestore(CommandSender sender, String[] args) {
+    if (args.length < 3) {
+      sender.sendMessage("Usage: /cinematic dolly restore <player>");
+      return;
+    }
+    Player target = Bukkit.getPlayerExact(args[2]);
+    if (target == null) {
+      sender.sendMessage("Unknown player: " + args[2]);
+      return;
+    }
+    dolly.restore(target);
+    sender.sendMessage("Restored visibility for " + target.getName() + ".");
+  }
+
   private List<String> dummyNames() {
     return new ArrayList<>(dummies.list());
   }
@@ -617,6 +652,7 @@ public final class CinematicCommand implements BasicCommand {
     sender.sendMessage("       /cinematic dummy destroy <name>");
     sender.sendMessage("       /cinematic dummy list");
     sender.sendMessage("       /cinematic dolly <player> <world> <x> <y> <z> <yaw> <pitch>");
+    sender.sendMessage("       /cinematic dolly restore <player>");
     sender.sendMessage("       /cinematic experience create <name>");
     sender.sendMessage("       /cinematic experience beat add <name> timeline <beatId> <scene>");
     sender.sendMessage("       /cinematic experience play <name> [player]");

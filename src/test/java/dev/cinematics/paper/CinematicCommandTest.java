@@ -100,9 +100,18 @@ class CinematicCommandTest {
         CinematicCommand.parseAction(
             new String[] {"dolly", "jlo", "world", "0", "80", "0", "90", "0"}));
     assertEquals(
+        CinematicCommand.Action.DOLLY_RESTORE,
+        CinematicCommand.parseAction(new String[] {"dolly", "restore", "jlo"}));
+    assertEquals(
         CinematicCommand.Action.UNKNOWN, CinematicCommand.parseAction(new String[] {"dummy"}));
     assertEquals(
         CinematicCommand.Action.UNKNOWN, CinematicCommand.parseAction(new String[] {"dolly"}));
+    assertEquals(
+        CinematicCommand.Action.UNKNOWN,
+        CinematicCommand.parseAction(new String[] {"dolly", "restore"}));
+    assertEquals(
+        CinematicCommand.Action.UNKNOWN,
+        CinematicCommand.parseAction(new String[] {"dolly", "restore", "jlo", "extra"}));
   }
 
   @Test

@@ -54,6 +54,7 @@ public final class PaperCinematicController implements Listener {
   private final ConcurrentMap<UUID, ScheduledTask> tickers = new ConcurrentHashMap<>();
   private final ConcurrentMap<UUID, AppliedState> applied = new ConcurrentHashMap<>();
   private PlayerSkinDummy dummies;
+  private CameraDolly dolly;
 
   public PaperCinematicController(
       Plugin plugin, CinematicService cinematicService, ExperienceService experienceService) {
@@ -64,6 +65,10 @@ public final class PaperCinematicController implements Listener {
 
   public void attachDummies(PlayerSkinDummy dummies) {
     this.dummies = Objects.requireNonNull(dummies, "dummies");
+  }
+
+  public void attachDolly(CameraDolly dolly) {
+    this.dolly = Objects.requireNonNull(dolly, "dolly");
   }
 
   public CinematicResult play(Player player, String sceneName) {
@@ -115,6 +120,9 @@ public final class PaperCinematicController implements Listener {
     if (dummies != null) {
       dummies.hideAllShown();
     }
+    if (dolly != null) {
+      dolly.restoreAll();
+    }
   }
 
   @EventHandler(priority = EventPriority.MONITOR)
@@ -128,6 +136,9 @@ public final class PaperCinematicController implements Listener {
     }
     if (dummies != null) {
       dummies.hideAllShown();
+    }
+    if (dolly != null && dolly.isHidden(player)) {
+      dolly.restore(player);
     }
   }
 
