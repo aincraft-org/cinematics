@@ -126,6 +126,9 @@ public final class PaperCinematicController implements Listener {
     if (state != null) {
       state.removeProps();
     }
+    if (dummies != null) {
+      dummies.hideAllShown();
+    }
   }
 
   static CameraPose poseOf(Location location) {
