@@ -5,6 +5,7 @@ shadow = "8.3.7"
 run-paper = "3.0.2"
 spotbugs = "6.4.8"
 spotless = "7.2.1"
+packetevents = "2.13.0"
 
 [libraries]
 paper-api = { module = "io.papermc.paper:paper-api", version.ref = "paper-api" }
@@ -12,6 +13,7 @@ junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 
+packetevents-spigot = { module = "com.github.retrooper:packetevents-spigot", version.ref = "packetevents" }
 [plugins]
 shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
 run-paper = { id = "xyz.jpenilla.run-paper", version.ref = "run-paper" }

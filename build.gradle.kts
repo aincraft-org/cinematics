@@ -60,6 +60,7 @@ val apiJar =
 repositories {
     mavenCentral()
     maven("https://repo.papermc.io/repository/maven-public/")
+    maven("https://repo.codemc.io/repository/maven-releases/")
 }
 
 dependencies {
@@ -68,6 +69,7 @@ dependencies {
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)
+    implementation(libs.packetevents.spigot)
 }
 
 tasks.test {
@@ -84,6 +86,9 @@ tasks.shadowJar {
     archiveBaseName.set("cinematics")
     archiveClassifier.set("")
     mustRunAfter(tasks.jar)
+    relocate("com.github.retrooper.packetevents", "dev.cinematics.libs.packetevents")
+    relocate("io.github.retrooper.packetevents", "dev.cinematics.libs.packetevents")
+    relocate("net.kyori", "dev.cinematics.libs.kyori")
 }
 
 tasks.named("check") {
