@@ -142,7 +142,7 @@ import org.junit.jupiter.api.Test;
 class PlayerSkinDummyTest {
 
   @Test
-  void rejectsInvalidAndDuplicateNames() {
+  void rejectsInvalidName() {
     PlayerSkinDummy dummies = new PlayerSkinDummy(new FakePlayerPackets());
     assertEquals(CinematicResult.INVALID_NAME, dummies.create("", null));
   }
@@ -162,12 +162,15 @@ package dev.cinematics.paper;
 
 import dev.cinematics.api.CameraPose;
 import dev.cinematics.api.CinematicResult;
+import dev.cinematics.api.CinematicScene;
 import io.papermc.paper.entity.PlayerProfile;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 public final class PlayerSkinDummy {
@@ -176,64 +179,113 @@ public final class PlayerSkinDummy {
   private final FakePlayerPackets packets;
 
   public PlayerSkinDummy(FakePlayerPackets packets) {
-    this.packets = Objects.requireNonNull(packets);
+    this.packets = Objects.requireNonNull(packets, "packets");
   }
 
   public CinematicResult create(String dummyId, Player player) {
-    if (!CinematicScene.isValidName(dummyId)) return CinematicResult.INVALID_NAME;
-    if (dummies.containsKey(dummyId)) return CinematicResult.ALREADY_EXISTS;
+    String normalized = CinematicScene.normalizeName(dummyId);
+    if (normalized == null) {
+      return CinematicResult.INVALID_NAME;
+    }
+    if (dummies.containsKey(normalized)) {
+      return CinematicResult.ALREADY_EXISTS;
+    }
     PlayerProfile profile = player.getPlayerProfile();
     CameraPose pose = PaperCinematicController.poseOf(player.getLocation());
-    dummies.put(dummyId, new Dummy(dummyId, profile, pose, null, false));
+    dummies.put(normalized, new Dummy(normalized, player.getUniqueId(), profile, pose, null, false));
     return CinematicResult.SUCCESS;
   }
 
   public CinematicResult show(String dummyId) {
-    Dummy dummy = dummies.get(dummyId);
-    if (dummy == null) return CinematicResult.UNKNOWN_SCENE;
-    if (dummy.shown()) return CinematicResult.SUCCESS;
+    String normalized = CinematicScene.normalizeName(dummyId);
+    if (normalized == null) {
+      return CinematicResult.INVALID_NAME;
+    }
+    Dummy dummy = dummies.get(normalized);
+    if (dummy == null) {
+      return CinematicResult.UNKNOWN_SCENE;
+    }
+    if (dummy.shown()) {
+      return CinematicResult.SUCCESS;
+    }
     int entityId = allocateEntityId();
-    Collection<Player> viewers = List.copyOf(player.getServer().getOnlinePlayers());
+    Collection<Player> viewers = List.copyOf(Bukkit.getServer().getOnlinePlayers());
     packets.spawn(packets.fromPlayerProfile(dummy.profile()), entityId, dummy.pose(), viewers);
-    dummies.put(dummyId, dummy.withEntityId(entityId).withShown(true));
+    dummies.put(
+        normalized,
+        new Dummy(dummy.dummyId(), dummy.playerId(), dummy.profile(), dummy.pose(), entityId, true));
     return CinematicResult.SUCCESS;
   }
 
   public CinematicResult hide(String dummyId) {
-    Dummy dummy = dummies.get(dummyId);
-    if (dummy == null || !dummy.shown()) return CinematicResult.SUCCESS;
-    Collection<Player> viewers = List.copyOf(player.getServer().getOnlinePlayers());
-    packets.destroy(dummy.profile().getId(), dummy.entityId(), viewers);
-    dummies.put(dummyId, dummy.withShown(false).withEntityId(null));
+    String normalized = CinematicScene.normalizeName(dummyId);
+    if (normalized == null) {
+      return CinematicResult.INVALID_NAME;
+    }
+    Dummy dummy = dummies.get(normalized);
+    if (dummy == null || !dummy.shown()) {
+      return CinematicResult.SUCCESS;
+    }
+    Collection<Player> viewers = List.copyOf(Bukkit.getServer().getOnlinePlayers());
+    packets.destroy(dummy.playerId(), dummy.entityId(), viewers);
+    dummies.put(
+        normalized,
+        new Dummy(dummy.dummyId(), dummy.playerId(), dummy.profile(), dummy.pose(), null, false));
     return CinematicResult.SUCCESS;
   }
 
   public CinematicResult destroy(String dummyId) {
-    Dummy dummy = dummies.remove(dummyId);
-    if (dummy == null) return CinematicResult.UNKNOWN_SCENE;
+    String normalized = CinematicScene.normalizeName(dummyId);
+    if (normalized == null) {
+      return CinematicResult.INVALID_NAME;
+    }
+    Dummy dummy = dummies.remove(normalized);
+    if (dummy == null) {
+      return CinematicResult.UNKNOWN_SCENE;
+    }
     if (dummy.shown()) {
-      packets.destroy(dummy.profile().getId(), dummy.entityId(), List.copyOf(player.getServer().getOnlinePlayers()));
+      packets.destroy(
+          dummy.playerId(),
+          dummy.entityId(),
+          List.copyOf(Bukkit.getServer().getOnlinePlayers()));
     }
     return CinematicResult.SUCCESS;
   }
 
   public CinematicResult move(String dummyId, CameraPose pose) {
-    Dummy dummy = dummies.get(dummyId);
-    if (dummy == null) return CinematicResult.UNKNOWN_SCENE;
-    dummies.put(dummyId, dummy.withPose(pose));
-    if (dummy.shown()) { hide(dummyId); show(dummyId); }
+    String normalized = CinematicScene.normalizeName(dummyId);
+    if (normalized == null) {
+      return CinematicResult.INVALID_NAME;
+    }
+    Dummy dummy = dummies.get(normalized);
+    if (dummy == null) {
+      return CinematicResult.UNKNOWN_SCENE;
+    }
+    dummies.put(
+        normalized,
+        new Dummy(dummy.dummyId(), dummy.playerId(), dummy.profile(), pose, dummy.entityId(), dummy.shown()));
+    if (dummy.shown()) {
+      hide(normalized);
+      show(normalized);
+    }
     return CinematicResult.SUCCESS;
   }
 
-  public Collection<String> list() { return List.copyOf(dummies.keySet()); }
-
-  private int allocateEntityId() { return -1 * (dummies.size() + 1); }
-
-  private record Dummy(String dummyId, PlayerProfile profile, CameraPose pose, Integer entityId, boolean shown) {
-    Dummy withPose(CameraPose p) { return new Dummy(dummyId, profile, p, entityId, shown); }
-    Dummy withEntityId(Integer id) { return new Dummy(dummyId, profile, pose, id, shown); }
-    Dummy withShown(boolean s) { return new Dummy(dummyId, profile, pose, entityId, s); }
+  public Collection<String> list() {
+    return List.copyOf(dummies.keySet());
   }
+
+  private int allocateEntityId() {
+    return -1 * (dummies.size() + 1);
+  }
+
+  private record Dummy(
+      String dummyId,
+      UUID playerId,
+      PlayerProfile profile,
+      CameraPose pose,
+      Integer entityId,
+      boolean shown) {}
 }
 ```
 
@@ -263,13 +315,15 @@ git commit -m "Add PlayerSkinDummy lifecycle"
 ```java
 package dev.cinematics.paper;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
 import org.junit.jupiter.api.Test;
 
 class CameraDollyTest {
+
   @Test
-  void canConstruct() {
-    assertNotNull(new CameraDolly(null, null));
+  void rejectsNullPlugin() {
+    assertThrows(NullPointerException.class, () -> new CameraDolly(null));
   }
 }
 ```
@@ -292,27 +346,33 @@ import org.bukkit.plugin.Plugin;
 public final class CameraDolly {
 
   private final Plugin plugin;
-  private final PlayerSkinDummy dummies;
 
-  public CameraDolly(Plugin plugin, PlayerSkinDummy dummies) {
-    this.plugin = Objects.requireNonNull(plugin);
-    this.dummies = Objects.requireNonNull(dummies);
+  public CameraDolly(Plugin plugin) {
+    this.plugin = Objects.requireNonNull(plugin, "plugin");
   }
 
   public void apply(Player player, CameraPose pose) {
     Location location = PaperCinematicController.locationOf(pose);
-    if (location == null) return;
+    if (location == null) {
+      return;
+    }
     for (Player viewer : player.getServer().getOnlinePlayers()) {
-      if (!viewer.equals(player)) viewer.hidePlayer(plugin, player);
+      if (!viewer.equals(player)) {
+        viewer.hidePlayer(plugin, player);
+      }
     }
     player.teleport(location);
   }
 
   public void restore(Player player, CameraPose pose) {
     Location location = PaperCinematicController.locationOf(pose);
-    if (location != null) player.teleport(location);
+    if (location != null) {
+      player.teleport(location);
+    }
     for (Player viewer : player.getServer().getOnlinePlayers()) {
-      if (!viewer.equals(player)) viewer.showPlayer(plugin, player);
+      if (!viewer.equals(player)) {
+        viewer.showPlayer(plugin, player);
+      }
     }
   }
 }
@@ -346,7 +406,7 @@ git commit -m "Add CameraDolly apply/restore"
 ```java
 FakePlayerPackets packets = new FakePlayerPackets();
 PlayerSkinDummy dummies = new PlayerSkinDummy(packets);
-CameraDolly dolly = new CameraDolly(this, dummies);
+CameraDolly dolly = new CameraDolly(this);
 CinematicCommand command =
     new CinematicCommand(cinematicService, experienceService, cinematicController, dummies, dolly);
 ```
@@ -369,7 +429,43 @@ Dispatch:
 
 - [ ] **Step 4: Add parse tests**
 
-Add assertions in `CinematicCommandTest` for the new actions.
+Add the following assertions to `src/test/java/dev/cinematics/paper/CinematicCommandTest`:
+
+```java
+@Test
+void parsesDummyAndDollyActions() {
+  assertEquals(
+      CinematicCommand.Action.DUMMY_CREATE,
+      CinematicCommand.parseAction(new String[] {"dummy", "create", "hero"}));
+  assertEquals(
+      CinematicCommand.Action.DUMMY_SHOW,
+      CinematicCommand.parseAction(new String[] {"dummy", "show", "hero"}));
+  assertEquals(
+      CinematicCommand.Action.DUMMY_HIDE,
+      CinematicCommand.parseAction(new String[] {"dummy", "hide", "hero"}));
+  assertEquals(
+      CinematicCommand.Action.DUMMY_DESTROY,
+      CinematicCommand.parseAction(new String[] {"dummy", "destroy", "hero"}));
+  assertEquals(
+      CinematicCommand.Action.DUMMY_LIST,
+      CinematicCommand.parseAction(new String[] {"dummy", "list"}));
+  assertEquals(
+      CinematicCommand.Action.DOLLY,
+      CinematicCommand.parseAction(new String[] {"dolly", "jlo", "0", "80", "0", "90", "0"}));
+  assertEquals(
+      CinematicCommand.Action.UNKNOWN, CinematicCommand.parseAction(new String[] {"dummy"}));
+  assertEquals(
+      CinematicCommand.Action.UNKNOWN, CinematicCommand.parseAction(new String[] {"dolly"}));
+}
+
+@Test
+void suggestionsIncludeDummyAndDolly() {
+  List<String> all = CinematicCommand.suggestions("");
+  assertTrue(all.containsAll(List.of("dummy", "dolly")));
+  assertEquals(List.of("dummy"), CinematicCommand.suggestions("du"));
+  assertEquals(List.of("dolly"), CinematicCommand.suggestions("do"));
+}
+```
 
 - [ ] **Step 5: Run tests**
 
@@ -422,4 +518,4 @@ git commit -m "Complete Slice 1: player-skin dummy and camera dolly"
 
 1. **Spec coverage:** Slice 1 standalone renderer and commands are covered; Slice 2/3 intentionally excluded.
 2. **Placeholder scan:** Task 1 contains an intentional bounded spike; exact PacketEvents calls are verified in-game before implementation proceeds.
-3. **Type consistency:** `CameraDolly` and `PlayerSkinDummy` receive `Plugin` and `FakePlayerPackets` via constructors; `CinematicCommand` receives the new services.
+3. **Type consistency:** `PlayerSkinDummy` receives `FakePlayerPackets`; `CameraDolly` receives `Plugin`; `CinematicCommand` receives the new services.
