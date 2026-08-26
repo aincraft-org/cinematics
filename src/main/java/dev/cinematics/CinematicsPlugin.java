@@ -1,12 +1,17 @@
 package dev.cinematics;
 
+import com.github.retrooper.packetevents.PacketEvents;
 import dev.cinematics.api.CinematicService;
 import dev.cinematics.api.ExperienceService;
 import dev.cinematics.core.DefaultCinematicService;
 import dev.cinematics.core.JsonCinematicRepository;
 import dev.cinematics.core.JsonExperienceRepository;
+import dev.cinematics.paper.CameraDolly;
 import dev.cinematics.paper.CinematicCommand;
+import dev.cinematics.paper.FakePlayerPackets;
 import dev.cinematics.paper.PaperCinematicController;
+import dev.cinematics.paper.PlayerSkinDummy;
+import io.github.retrooper.packetevents.factory.spigot.SpigotPacketEventsBuilder;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import java.nio.file.Path;
 import java.util.List;
@@ -22,7 +27,14 @@ public final class CinematicsPlugin extends JavaPlugin {
   private PaperCinematicController cinematicController;
 
   @Override
+  public void onLoad() {
+    PacketEvents.setAPI(SpigotPacketEventsBuilder.build(this));
+    PacketEvents.getAPI().load();
+  }
+
+  @Override
   public void onEnable() {
+    PacketEvents.getAPI().init();
     if (!getDataFolder().exists() && !getDataFolder().mkdirs()) {
       getLogger().severe("Failed to create data folder; disabling.");
       Bukkit.getPluginManager().disablePlugin(this);
@@ -40,6 +52,10 @@ public final class CinematicsPlugin extends JavaPlugin {
         .register(ExperienceService.class, experienceService, this, ServicePriority.Normal);
     cinematicController = new PaperCinematicController(this, cinematicService, experienceService);
     Bukkit.getPluginManager().registerEvents(cinematicController, this);
+    FakePlayerPackets packets = new FakePlayerPackets();
+    PlayerSkinDummy dummies = new PlayerSkinDummy(packets);
+    CameraDolly dolly = new CameraDolly(this);
+    cinematicController.attachDummies(dummies);
     getLifecycleManager()
         .registerEventHandler(
             LifecycleEvents.COMMANDS,
@@ -51,7 +67,11 @@ public final class CinematicsPlugin extends JavaPlugin {
                         "Create cinematic camera scenes with shaders and props.",
                         List.of("cinematics", "cine"),
                         new CinematicCommand(
-                            cinematicService, experienceService, cinematicController)));
+                            cinematicService,
+                            experienceService,
+                            cinematicController,
+                            dummies,
+                            dolly)));
     getLogger()
         .info(
             "Cinematics enabled (scenes at "
@@ -72,6 +92,7 @@ public final class CinematicsPlugin extends JavaPlugin {
       cinematicService.close();
       cinematicService = null;
     }
+    PacketEvents.getAPI().terminate();
     Bukkit.getServicesManager().unregister(this);
     getLogger().info("Cinematics disabled.");
   }

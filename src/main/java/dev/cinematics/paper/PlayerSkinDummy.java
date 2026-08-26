@@ -123,6 +123,15 @@ public final class PlayerSkinDummy {
     return List.copyOf(dummies.keySet());
   }
 
+  void hideAllShown() {
+    for (String name : List.copyOf(dummies.keySet())) {
+      Dummy dummy = dummies.get(name);
+      if (dummy != null && dummy.shown()) {
+        hide(name);
+      }
+    }
+  }
+
   int allocateEntityId() {
     return -1 * nextEntityId.incrementAndGet();
   }

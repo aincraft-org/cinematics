@@ -87,7 +87,7 @@ tasks.shadowJar {
     archiveClassifier.set("")
     mustRunAfter(tasks.jar)
     relocate("com.github.retrooper.packetevents", "dev.cinematics.libs.packetevents")
-    relocate("io.github.retrooper.packetevents", "dev.cinematics.libs.packetevents")
+    relocate("io.github.retrooper.packetevents", "dev.cinematics.libs.io.packetevents")
     relocate("net.kyori", "dev.cinematics.libs.kyori")
 }
 

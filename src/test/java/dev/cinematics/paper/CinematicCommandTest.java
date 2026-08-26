@@ -31,11 +31,24 @@ class CinematicCommandTest {
     List<String> all = CinematicCommand.suggestions("");
     assertTrue(
         all.containsAll(
-            List.of("create", "camera", "shaders", "props", "play", "stop", "list", "experience")));
+            List.of(
+                "create",
+                "camera",
+                "shaders",
+                "props",
+                "play",
+                "stop",
+                "list",
+                "experience",
+                "dummy",
+                "dolly")));
     assertEquals(List.of("play", "props"), CinematicCommand.suggestions("p"));
     assertEquals(List.of("shaders", "stop"), CinematicCommand.suggestions("s"));
     assertEquals(List.of("camera"), CinematicCommand.suggestions("cam"));
     assertEquals(List.of("experience"), CinematicCommand.suggestions("ex"));
+    assertTrue(CinematicCommand.suggestions("").containsAll(List.of("dummy", "dolly")));
+    assertEquals(List.of("dummy"), CinematicCommand.suggestions("du"));
+    assertEquals(List.of("dolly"), CinematicCommand.suggestions("do"));
   }
 
   @Test
@@ -63,6 +76,33 @@ class CinematicCommandTest {
         CinematicCommand.experienceSuggestions("")
             .containsAll(List.of("create", "beat", "play", "list")));
     assertEquals(List.of("play"), CinematicCommand.experienceSuggestions("p"));
+  }
+
+  @Test
+  void parsesDummyAndDollyActions() {
+    assertEquals(
+        CinematicCommand.Action.DUMMY_CREATE,
+        CinematicCommand.parseAction(new String[] {"dummy", "create", "hero"}));
+    assertEquals(
+        CinematicCommand.Action.DUMMY_SHOW,
+        CinematicCommand.parseAction(new String[] {"dummy", "show", "hero"}));
+    assertEquals(
+        CinematicCommand.Action.DUMMY_HIDE,
+        CinematicCommand.parseAction(new String[] {"dummy", "hide", "hero"}));
+    assertEquals(
+        CinematicCommand.Action.DUMMY_DESTROY,
+        CinematicCommand.parseAction(new String[] {"dummy", "destroy", "hero"}));
+    assertEquals(
+        CinematicCommand.Action.DUMMY_LIST,
+        CinematicCommand.parseAction(new String[] {"dummy", "list"}));
+    assertEquals(
+        CinematicCommand.Action.DOLLY,
+        CinematicCommand.parseAction(
+            new String[] {"dolly", "jlo", "world", "0", "80", "0", "90", "0"}));
+    assertEquals(
+        CinematicCommand.Action.UNKNOWN, CinematicCommand.parseAction(new String[] {"dummy"}));
+    assertEquals(
+        CinematicCommand.Action.UNKNOWN, CinematicCommand.parseAction(new String[] {"dolly"}));
   }
 
   @Test

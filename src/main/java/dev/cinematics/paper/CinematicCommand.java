@@ -30,21 +30,39 @@ public final class CinematicCommand implements BasicCommand {
 
   static final String USE_PERMISSION = "cinematics.use";
   private static final List<String> ACTIONS =
-      List.of("create", "camera", "shaders", "props", "play", "stop", "list", "experience");
+      List.of(
+          "create",
+          "camera",
+          "shaders",
+          "props",
+          "play",
+          "stop",
+          "list",
+          "experience",
+          "dummy",
+          "dolly");
   private static final List<String> EXPERIENCE_ACTIONS = List.of("create", "beat", "play", "list");
+  private static final List<String> DUMMY_ACTIONS =
+      List.of("create", "show", "hide", "destroy", "list");
 
   private final CinematicService cinematicService;
   private final ExperienceService experienceService;
   private final PaperCinematicController controller;
+  private final PlayerSkinDummy dummies;
+  private final CameraDolly dolly;
 
   public CinematicCommand(
       CinematicService cinematicService,
       ExperienceService experienceService,
-      PaperCinematicController controller) {
+      PaperCinematicController controller,
+      PlayerSkinDummy dummies,
+      CameraDolly dolly) {
     this.cinematicService = java.util.Objects.requireNonNull(cinematicService, "cinematicService");
     this.experienceService =
         java.util.Objects.requireNonNull(experienceService, "experienceService");
     this.controller = java.util.Objects.requireNonNull(controller, "controller");
+    this.dummies = java.util.Objects.requireNonNull(dummies, "dummies");
+    this.dolly = java.util.Objects.requireNonNull(dolly, "dolly");
   }
 
   enum Action {
@@ -56,6 +74,12 @@ public final class CinematicCommand implements BasicCommand {
     STOP,
     LIST,
     EXPERIENCE,
+    DUMMY_CREATE,
+    DUMMY_SHOW,
+    DUMMY_HIDE,
+    DUMMY_DESTROY,
+    DUMMY_LIST,
+    DOLLY,
     UNKNOWN
   }
 
@@ -80,6 +104,22 @@ public final class CinematicCommand implements BasicCommand {
       case "stop" -> Action.STOP;
       case "list" -> Action.LIST;
       case "experience" -> Action.EXPERIENCE;
+      case "dummy" -> parseDummyAction(args);
+      case "dolly" -> args.length >= 8 ? Action.DOLLY : Action.UNKNOWN;
+      default -> Action.UNKNOWN;
+    };
+  }
+
+  static Action parseDummyAction(String[] args) {
+    if (args.length < 2) {
+      return Action.UNKNOWN;
+    }
+    return switch (args[1].toLowerCase(Locale.ROOT)) {
+      case "create" -> Action.DUMMY_CREATE;
+      case "show" -> Action.DUMMY_SHOW;
+      case "hide" -> Action.DUMMY_HIDE;
+      case "destroy" -> Action.DUMMY_DESTROY;
+      case "list" -> Action.DUMMY_LIST;
       default -> Action.UNKNOWN;
     };
   }
@@ -142,6 +182,12 @@ public final class CinematicCommand implements BasicCommand {
       case STOP -> stop(sender, args);
       case LIST -> list(sender);
       case EXPERIENCE -> experience(sender, args);
+      case DUMMY_CREATE -> dummyCreate(sender, args);
+      case DUMMY_SHOW -> dummyShow(sender, args);
+      case DUMMY_HIDE -> dummyHide(sender, args);
+      case DUMMY_DESTROY -> dummyDestroy(sender, args);
+      case DUMMY_LIST -> dummyList(sender);
+      case DOLLY -> dolly(sender, args);
       default -> sendUsage(sender);
     }
   }
@@ -175,6 +221,18 @@ public final class CinematicCommand implements BasicCommand {
     }
     if (args.length == 3 && parseAction(args) == Action.PLAY) {
       return filter(onlinePlayerNames(), args[2]);
+    }
+    if (args.length == 2 && "dummy".equalsIgnoreCase(args[0])) {
+      return filter(DUMMY_ACTIONS, args[1]);
+    }
+    if (args.length == 3
+        && (parseAction(args) == Action.DUMMY_SHOW
+            || parseAction(args) == Action.DUMMY_HIDE
+            || parseAction(args) == Action.DUMMY_DESTROY)) {
+      return filter(dummyNames(), args[2]);
+    }
+    if (args.length == 2 && parseAction(args) == Action.DOLLY) {
+      return filter(onlinePlayerNames(), args[1]);
     }
     return List.of();
   }
@@ -329,6 +387,106 @@ public final class CinematicCommand implements BasicCommand {
     return player;
   }
 
+  private void dummyCreate(CommandSender sender, String[] args) {
+    if (args.length < 3) {
+      sender.sendMessage("Usage: /cinematic dummy create <name> [player]");
+      return;
+    }
+    Player target = resolveTarget(sender, args, 3);
+    if (target == null) {
+      return;
+    }
+    CinematicResult result = dummies.create(args[2], target);
+    sender.sendMessage(describe(result, args[2]));
+  }
+
+  private void dummyShow(CommandSender sender, String[] args) {
+    if (args.length < 3) {
+      sender.sendMessage("Usage: /cinematic dummy show <name>");
+      return;
+    }
+    sender.sendMessage(describe(dummies.show(args[2]), args[2]));
+  }
+
+  private void dummyHide(CommandSender sender, String[] args) {
+    if (args.length < 3) {
+      sender.sendMessage("Usage: /cinematic dummy hide <name>");
+      return;
+    }
+    sender.sendMessage(describe(dummies.hide(args[2]), args[2]));
+  }
+
+  private void dummyDestroy(CommandSender sender, String[] args) {
+    if (args.length < 3) {
+      sender.sendMessage("Usage: /cinematic dummy destroy <name>");
+      return;
+    }
+    sender.sendMessage(describe(dummies.destroy(args[2]), args[2]));
+  }
+
+  private void dummyList(CommandSender sender) {
+    Collection<String> names = dummies.list();
+    if (names.isEmpty()) {
+      sender.sendMessage("No player-skin dummies.");
+      return;
+    }
+    sender.sendMessage("Player-skin dummies:");
+    for (String name : names) {
+      sender.sendMessage("  " + name);
+    }
+  }
+
+  private void dolly(CommandSender sender, String[] args) {
+    if (args.length < 8) {
+      sender.sendMessage("Usage: /cinematic dolly <player> <world> <x> <y> <z> <yaw> <pitch>");
+      return;
+    }
+    Player target = Bukkit.getPlayerExact(args[1]);
+    if (target == null) {
+      sender.sendMessage("Unknown player: " + args[1]);
+      return;
+    }
+    org.bukkit.World world = Bukkit.getWorld(args[2]);
+    if (world == null) {
+      sender.sendMessage("Unknown world: " + args[2]);
+      return;
+    }
+    Optional<Double> x = parseDouble(args[3]);
+    Optional<Double> y = parseDouble(args[4]);
+    Optional<Double> z = parseDouble(args[5]);
+    Optional<Double> yaw = parseDouble(args[6]);
+    Optional<Double> pitch = parseDouble(args[7]);
+    if (x.isEmpty() || y.isEmpty() || z.isEmpty() || yaw.isEmpty() || pitch.isEmpty()) {
+      sender.sendMessage("x, y, z, yaw and pitch must be numbers.");
+      return;
+    }
+    CameraPose pose =
+        new CameraPose(
+            world.getUID().toString(),
+            x.get(),
+            y.get(),
+            z.get(),
+            yaw.get().floatValue(),
+            pitch.get().floatValue());
+    dolly.apply(target, pose);
+    sender.sendMessage(
+        "Dollied "
+            + target.getName()
+            + " to "
+            + world.getName()
+            + " ("
+            + x.get()
+            + ", "
+            + y.get()
+            + ", "
+            + z.get()
+            + ").");
+  }
+
+  private List<String> dummyNames() {
+    return new ArrayList<>(dummies.list());
+  }
+
   private void experience(CommandSender sender, String[] args) {
     switch (parseExperienceAction(args)) {
       case CREATE -> experienceCreate(sender, args);
@@ -453,6 +611,12 @@ public final class CinematicCommand implements BasicCommand {
     sender.sendMessage("       /cinematic play <name> [player]");
     sender.sendMessage("       /cinematic stop [player]");
     sender.sendMessage("       /cinematic list");
+    sender.sendMessage("       /cinematic dummy create <name> [player]");
+    sender.sendMessage("       /cinematic dummy show <name>");
+    sender.sendMessage("       /cinematic dummy hide <name>");
+    sender.sendMessage("       /cinematic dummy destroy <name>");
+    sender.sendMessage("       /cinematic dummy list");
+    sender.sendMessage("       /cinematic dolly <player> <world> <x> <y> <z> <yaw> <pitch>");
     sender.sendMessage("       /cinematic experience create <name>");
     sender.sendMessage("       /cinematic experience beat add <name> timeline <beatId> <scene>");
     sender.sendMessage("       /cinematic experience play <name> [player]");
