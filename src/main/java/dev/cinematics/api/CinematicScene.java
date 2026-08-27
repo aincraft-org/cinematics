@@ -20,6 +20,7 @@ public final class CinematicScene {
 
   private final String name;
   private final List<CameraKeyframe> keyframes;
+  private final List<CameraKeyframe> dummyKeyframes;
   private final List<OverlayCue> shaders;
   private final List<PropCue> props;
   private final double durationSeconds;
@@ -27,11 +28,13 @@ public final class CinematicScene {
   private CinematicScene(
       String name,
       List<CameraKeyframe> keyframes,
+      List<CameraKeyframe> dummyKeyframes,
       List<OverlayCue> shaders,
       List<PropCue> props,
       double durationSeconds) {
     this.name = name;
     this.keyframes = keyframes;
+    this.dummyKeyframes = dummyKeyframes;
     this.shaders = shaders;
     this.props = props;
     this.durationSeconds = durationSeconds;
@@ -43,29 +46,40 @@ public final class CinematicScene {
    */
   public static CinematicScene load(
       String name, List<CameraKeyframe> keyframes, List<OverlayCue> shaders, List<PropCue> props) {
+    return load(name, keyframes, List.of(), shaders, props);
+  }
+
+  /**
+   * Builds a complete scene with an optional independent dummy keyframe path. Camera keyframe times
+   * must be strictly increasing; dummy keyframe times follow the same rule when two or more are
+   * present.
+   */
+  public static CinematicScene load(
+      String name,
+      List<CameraKeyframe> keyframes,
+      List<CameraKeyframe> dummyKeyframes,
+      List<OverlayCue> shaders,
+      List<PropCue> props) {
     String normalized = normalizeName(name);
     if (normalized == null) {
       throw new IllegalArgumentException("scene name must be 1–64 [a-z0-9_-] characters");
     }
     Objects.requireNonNull(keyframes, "keyframes");
+    Objects.requireNonNull(dummyKeyframes, "dummyKeyframes");
     Objects.requireNonNull(shaders, "shaders");
     Objects.requireNonNull(props, "props");
     if (keyframes.size() < 2) {
       throw new IllegalArgumentException("cinematic scene requires at least two camera keyframes");
     }
-    List<CameraKeyframe> sorted = new ArrayList<>(keyframes);
-    sorted.sort(Comparator.comparingDouble(CameraKeyframe::timeSeconds));
-    for (int i = 1; i < sorted.size(); i++) {
-      if (sorted.get(i).timeSeconds() <= sorted.get(i - 1).timeSeconds()) {
-        throw new IllegalArgumentException("camera keyframe times must be strictly increasing");
-      }
-    }
+    List<CameraKeyframe> sortedCamera = sortKeyframes(keyframes, "camera");
+    List<CameraKeyframe> sortedDummy = sortDummyKeyframes(dummyKeyframes);
     return new CinematicScene(
         normalized,
-        List.copyOf(sorted),
+        List.copyOf(sortedCamera),
+        List.copyOf(sortedDummy),
         List.copyOf(shaders),
         List.copyOf(props),
-        sorted.getLast().timeSeconds());
+        sortedCamera.getLast().timeSeconds());
   }
 
   /**
@@ -93,6 +107,10 @@ public final class CinematicScene {
     return keyframes;
   }
 
+  public List<CameraKeyframe> dummyKeyframes() {
+    return dummyKeyframes;
+  }
+
   public List<OverlayCue> shaders() {
     return shaders;
   }
@@ -112,8 +130,9 @@ public final class CinematicScene {
    * the clamped time are included.
    */
   public SceneSample sample(double t) {
-    double clamped = clamp(t);
-    CameraPose camera = interpolate(clamped);
+    double clamped = clamp(t, durationSeconds);
+    CameraPose camera = interpolate(keyframes, clamped);
+    CameraPose dummyPose = sampleDummy(t);
     List<String> activeShaders = new ArrayList<>();
     for (OverlayCue cue : shaders) {
       if (cue.contains(clamped)) {
@@ -126,10 +145,41 @@ public final class CinematicScene {
         activeProps.add(cue);
       }
     }
-    return new SceneSample(camera, activeShaders, activeProps);
+    return new SceneSample(camera, dummyPose, activeShaders, activeProps);
   }
 
-  private double clamp(double t) {
+  private CameraPose sampleDummy(double t) {
+    if (dummyKeyframes.isEmpty()) {
+      return null;
+    }
+    if (dummyKeyframes.size() == 1) {
+      return dummyKeyframes.getFirst().pose();
+    }
+    double dummyDuration = dummyKeyframes.getLast().timeSeconds();
+    return interpolate(dummyKeyframes, clamp(t, dummyDuration));
+  }
+
+  private static List<CameraKeyframe> sortKeyframes(
+      List<CameraKeyframe> keyframes, String trackName) {
+    List<CameraKeyframe> sorted = new ArrayList<>(keyframes);
+    sorted.sort(Comparator.comparingDouble(CameraKeyframe::timeSeconds));
+    for (int i = 1; i < sorted.size(); i++) {
+      if (sorted.get(i).timeSeconds() <= sorted.get(i - 1).timeSeconds()) {
+        throw new IllegalArgumentException(
+            trackName + " keyframe times must be strictly increasing");
+      }
+    }
+    return sorted;
+  }
+
+  private static List<CameraKeyframe> sortDummyKeyframes(List<CameraKeyframe> keyframes) {
+    if (keyframes.isEmpty() || keyframes.size() == 1) {
+      return new ArrayList<>(keyframes);
+    }
+    return sortKeyframes(keyframes, "dummy");
+  }
+
+  private static double clamp(double t, double durationSeconds) {
     if (!Double.isFinite(t) || t <= 0.0) {
       return 0.0;
     }
@@ -139,16 +189,16 @@ public final class CinematicScene {
     return t;
   }
 
-  private CameraPose interpolate(double t) {
-    if (t <= keyframes.getFirst().timeSeconds()) {
-      return keyframes.getFirst().pose();
+  private static CameraPose interpolate(List<CameraKeyframe> track, double t) {
+    if (t <= track.getFirst().timeSeconds()) {
+      return track.getFirst().pose();
     }
-    if (t >= keyframes.getLast().timeSeconds()) {
-      return keyframes.getLast().pose();
+    if (t >= track.getLast().timeSeconds()) {
+      return track.getLast().pose();
     }
-    CameraKeyframe previous = keyframes.getFirst();
-    for (int i = 1; i < keyframes.size(); i++) {
-      CameraKeyframe next = keyframes.get(i);
+    CameraKeyframe previous = track.getFirst();
+    for (int i = 1; i < track.size(); i++) {
+      CameraKeyframe next = track.get(i);
       if (t <= next.timeSeconds()) {
         double span = next.timeSeconds() - previous.timeSeconds();
         double alpha = span == 0.0 ? 1.0 : (t - previous.timeSeconds()) / span;
@@ -156,7 +206,7 @@ public final class CinematicScene {
       }
       previous = next;
     }
-    return keyframes.getLast().pose();
+    return track.getLast().pose();
   }
 
   static CameraPose lerp(CameraPose from, CameraPose to, double alpha) {
@@ -196,13 +246,14 @@ public final class CinematicScene {
     return Double.compare(that.durationSeconds, durationSeconds) == 0
         && name.equals(that.name)
         && keyframes.equals(that.keyframes)
+        && dummyKeyframes.equals(that.dummyKeyframes)
         && shaders.equals(that.shaders)
         && props.equals(that.props);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(name, keyframes, shaders, props, durationSeconds);
+    return Objects.hash(name, keyframes, dummyKeyframes, shaders, props, durationSeconds);
   }
 
   @Override
@@ -211,6 +262,8 @@ public final class CinematicScene {
         + name
         + ", keyframes="
         + keyframes.size()
+        + ", dummyKeyframes="
+        + dummyKeyframes.size()
         + ", duration="
         + durationSeconds
         + '}';

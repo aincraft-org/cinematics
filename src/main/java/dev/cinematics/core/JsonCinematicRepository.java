@@ -108,6 +108,9 @@ public final class JsonCinematicRepository implements CinematicRepository {
     sb.append("  \"keyframes\": [\n");
     appendJoined(sb, draft.keyframes(), JsonCinematicRepository::encodeKeyframe);
     sb.append("  ],\n");
+    sb.append("  \"dummyKeyframes\": [\n");
+    appendJoined(sb, draft.dummyKeyframes(), JsonCinematicRepository::encodeKeyframe);
+    sb.append("  ],\n");
     sb.append("  \"shaders\": [\n");
     appendJoined(sb, draft.shaders(), JsonCinematicRepository::encodeShader);
     sb.append("  ],\n");
@@ -133,6 +136,13 @@ public final class JsonCinematicRepository implements CinematicRepository {
         keyframes.add(keyframe);
       }
     }
+    List<CameraKeyframe> dummyKeyframes = new ArrayList<>();
+    for (String body : objectArrayBodies(json, "dummyKeyframes")) {
+      CameraKeyframe keyframe = decodeKeyframe(body);
+      if (keyframe != null) {
+        dummyKeyframes.add(keyframe);
+      }
+    }
     List<OverlayCue> shaders = new ArrayList<>();
     for (String body : objectArrayBodies(json, "shaders")) {
       OverlayCue cue = decodeShader(body);
@@ -147,7 +157,7 @@ public final class JsonCinematicRepository implements CinematicRepository {
         props.add(cue);
       }
     }
-    return new CinematicDraft(name, keyframes, shaders, props);
+    return new CinematicDraft(name, keyframes, dummyKeyframes, shaders, props);
   }
 
   private static String encodeKeyframe(CameraKeyframe keyframe) {

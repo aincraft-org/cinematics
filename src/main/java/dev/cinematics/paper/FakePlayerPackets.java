@@ -11,7 +11,9 @@ import com.github.retrooper.packetevents.protocol.player.UserProfile;
 import com.github.retrooper.packetevents.util.Vector3d;
 import com.github.retrooper.packetevents.wrapper.PacketWrapper;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerDestroyEntities;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityHeadLook;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityMetadata;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityTeleport;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerPlayerInfoRemove;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerPlayerInfoUpdate;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSpawnEntity;
@@ -80,6 +82,20 @@ public final class FakePlayerPackets {
     Objects.requireNonNull(viewers, "viewers");
     send(new WrapperPlayServerDestroyEntities(entityId), viewers);
     send(new WrapperPlayServerPlayerInfoRemove(profileId), viewers);
+  }
+
+  void move(int entityId, CameraPose pose, Collection<Player> viewers) {
+    Objects.requireNonNull(pose, "pose");
+    Objects.requireNonNull(viewers, "viewers");
+    if (viewers.isEmpty()) {
+      return;
+    }
+    Vector3d position = new Vector3d(pose.x(), pose.y(), pose.z());
+
+    send(
+        new WrapperPlayServerEntityTeleport(entityId, position, pose.yaw(), pose.pitch(), false),
+        viewers);
+    send(new WrapperPlayServerEntityHeadLook(entityId, pose.yaw()), viewers);
   }
 
   private static void send(PacketWrapper<?> packet, Collection<Player> viewers) {

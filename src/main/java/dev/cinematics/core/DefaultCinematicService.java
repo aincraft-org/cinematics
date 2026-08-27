@@ -59,7 +59,12 @@ public final class DefaultCinematicService implements CinematicService {
     Objects.requireNonNull(scene, "scene");
     synchronized (mutationLock) {
       CinematicDraft draft =
-          new CinematicDraft(scene.name(), scene.keyframes(), scene.shaders(), scene.props());
+          new CinematicDraft(
+              scene.name(),
+              scene.keyframes(),
+              scene.dummyKeyframes(),
+              scene.shaders(),
+              scene.props());
       drafts.put(scene.name(), draft);
       repository.save(draft);
       return CinematicResult.SUCCESS;
@@ -208,7 +213,13 @@ public final class DefaultCinematicService implements CinematicService {
           .map(
               snapshot ->
                   new PlaybackSnapshot(
-                      snapshot.pose(), snapshot.shaders(), snapshot.props(), snapshot.playing()));
+                      snapshot.pose(),
+                      snapshot.dummyPose(),
+                      snapshot.cameraOrigin(),
+                      snapshot.dummyOrigin(),
+                      snapshot.shaders(),
+                      snapshot.props(),
+                      snapshot.playing()));
     }
     if (!(current.get() instanceof ScenePlayback session)) {
       return Optional.empty();
@@ -217,7 +228,12 @@ public final class DefaultCinematicService implements CinematicService {
       sessions.remove(playerId, session);
       return Optional.of(PlaybackSnapshot.restored(session.restorePose()));
     }
-    return Optional.of(PlaybackSnapshot.playing(session.scene().sample(elapsedSeconds)));
+    CinematicScene scene = session.scene();
+    CameraPose cameraOrigin = scene.keyframes().getFirst().pose();
+    CameraPose dummyOrigin =
+        scene.dummyKeyframes().isEmpty() ? null : scene.dummyKeyframes().getFirst().pose();
+    return Optional.of(
+        PlaybackSnapshot.playing(scene.sample(elapsedSeconds), cameraOrigin, dummyOrigin));
   }
 
   public void close() {

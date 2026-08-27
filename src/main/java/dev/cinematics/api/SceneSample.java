@@ -4,7 +4,8 @@ import java.util.List;
 import java.util.Objects;
 
 /** Camera pose plus the shader overlay ids and prop cues whose windows contain the sample time. */
-public record SceneSample(CameraPose camera, List<String> shaders, List<PropCue> props) {
+public record SceneSample(
+    CameraPose camera, CameraPose dummyPose, List<String> shaders, List<PropCue> props) {
 
   public SceneSample {
     Objects.requireNonNull(camera, "camera");

@@ -175,7 +175,12 @@ final class DefaultExperienceService implements ExperienceService {
       } else {
         sampled =
             ExperienceSnapshot.playing(
-                frame.sample(remaining), playback.experience().audience(), i, frame.id());
+                frame.sample(remaining),
+                frame.cameraOrigin(),
+                frame.dummyOrigin(),
+                playback.experience().audience(),
+                i,
+                frame.id());
         i = frames.size();
       }
     }

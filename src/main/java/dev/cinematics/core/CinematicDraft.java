@@ -11,17 +11,23 @@ import java.util.Optional;
 
 /** Persistable scene document that may still have fewer than two camera keyframes. */
 public record CinematicDraft(
-    String name, List<CameraKeyframe> keyframes, List<OverlayCue> shaders, List<PropCue> props) {
+    String name,
+    List<CameraKeyframe> keyframes,
+    List<CameraKeyframe> dummyKeyframes,
+    List<OverlayCue> shaders,
+    List<PropCue> props) {
 
   public CinematicDraft {
     Objects.requireNonNull(name, "name");
     keyframes = List.copyOf(Objects.requireNonNull(keyframes, "keyframes"));
+    dummyKeyframes =
+        List.copyOf(Objects.requireNonNullElse(dummyKeyframes, List.<CameraKeyframe>of()));
     shaders = List.copyOf(Objects.requireNonNull(shaders, "shaders"));
     props = List.copyOf(Objects.requireNonNull(props, "props"));
   }
 
   static CinematicDraft empty(String name) {
-    return new CinematicDraft(name, List.of(), List.of(), List.of());
+    return new CinematicDraft(name, List.of(), List.of(), List.of(), List.of());
   }
 
   CinematicDraft withKeyframe(CameraKeyframe keyframe) {
@@ -29,19 +35,19 @@ public record CinematicDraft(
     next.removeIf(existing -> existing.timeSeconds() == keyframe.timeSeconds());
     next.add(keyframe);
     next.sort((a, b) -> Double.compare(a.timeSeconds(), b.timeSeconds()));
-    return new CinematicDraft(name, next, shaders, props);
+    return new CinematicDraft(name, next, dummyKeyframes, shaders, props);
   }
 
   CinematicDraft withShader(OverlayCue cue) {
     List<OverlayCue> next = new ArrayList<>(shaders);
     next.add(cue);
-    return new CinematicDraft(name, keyframes, next, props);
+    return new CinematicDraft(name, keyframes, dummyKeyframes, next, props);
   }
 
   CinematicDraft withProp(PropCue cue) {
     List<PropCue> next = new ArrayList<>(props);
     next.add(cue);
-    return new CinematicDraft(name, keyframes, shaders, next);
+    return new CinematicDraft(name, keyframes, dummyKeyframes, shaders, next);
   }
 
   Optional<CinematicScene> complete() {
@@ -49,7 +55,7 @@ public record CinematicDraft(
       return Optional.empty();
     }
     try {
-      return Optional.of(CinematicScene.load(name, keyframes, shaders, props));
+      return Optional.of(CinematicScene.load(name, keyframes, dummyKeyframes, shaders, props));
     } catch (IllegalArgumentException invalid) {
       return Optional.empty();
     }

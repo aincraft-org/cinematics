@@ -94,7 +94,7 @@ public final class PlayerSkinDummy {
     return CinematicResult.SUCCESS;
   }
 
-  public CinematicResult move(String dummyId, CameraPose pose) {
+  public CinematicResult moveTo(String dummyId, CameraPose pose) {
     String normalized = CinematicScene.normalizeName(dummyId);
     if (normalized == null) {
       return CinematicResult.INVALID_NAME;
@@ -102,6 +102,9 @@ public final class PlayerSkinDummy {
     Dummy dummy = dummies.get(normalized);
     if (dummy == null) {
       return CinematicResult.UNKNOWN_SCENE;
+    }
+    if (!dummy.shown()) {
+      return CinematicResult.SUCCESS;
     }
     dummies.put(
         normalized,
@@ -112,10 +115,7 @@ public final class PlayerSkinDummy {
             pose,
             dummy.entityId(),
             dummy.shown()));
-    if (dummy.shown()) {
-      hide(normalized);
-      show(normalized);
-    }
+    packets.move(dummy.entityId(), pose, List.copyOf(Bukkit.getServer().getOnlinePlayers()));
     return CinematicResult.SUCCESS;
   }
 

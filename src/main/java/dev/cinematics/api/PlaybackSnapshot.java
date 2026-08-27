@@ -8,7 +8,13 @@ import java.util.Objects;
  * completion.
  */
 public record PlaybackSnapshot(
-    CameraPose pose, List<String> shaders, List<PropCue> props, boolean playing) {
+    CameraPose pose,
+    CameraPose dummyPose,
+    CameraPose cameraOrigin,
+    CameraPose dummyOrigin,
+    List<String> shaders,
+    List<PropCue> props,
+    boolean playing) {
 
   public PlaybackSnapshot {
     Objects.requireNonNull(pose, "pose");
@@ -17,13 +23,21 @@ public record PlaybackSnapshot(
   }
 
   /** Frame taken from a scene sample while the session is still running. */
-  public static PlaybackSnapshot playing(SceneSample sample) {
+  public static PlaybackSnapshot playing(
+      SceneSample sample, CameraPose cameraOrigin, CameraPose dummyOrigin) {
     Objects.requireNonNull(sample, "sample");
-    return new PlaybackSnapshot(sample.camera(), sample.shaders(), sample.props(), true);
+    return new PlaybackSnapshot(
+        sample.camera(),
+        sample.dummyPose(),
+        cameraOrigin,
+        dummyOrigin,
+        sample.shaders(),
+        sample.props(),
+        true);
   }
 
   /** Stop or natural completion: restore pose, no overlays or props. */
   public static PlaybackSnapshot restored(CameraPose pose) {
-    return new PlaybackSnapshot(pose, List.of(), List.of(), false);
+    return new PlaybackSnapshot(pose, null, null, null, List.of(), List.of(), false);
   }
 }

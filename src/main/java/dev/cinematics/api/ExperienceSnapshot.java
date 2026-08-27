@@ -9,6 +9,9 @@ import java.util.Objects;
  */
 public record ExperienceSnapshot(
     CameraPose pose,
+    CameraPose dummyPose,
+    CameraPose cameraOrigin,
+    CameraPose dummyOrigin,
     List<String> shaders,
     List<PropCue> props,
     Audience audience,
@@ -26,14 +29,29 @@ public record ExperienceSnapshot(
 
   /** Frame taken from a beat sample while the session is still running. */
   public static ExperienceSnapshot playing(
-      SceneSample sample, Audience audience, int beatIndex, String beatId) {
+      SceneSample sample,
+      CameraPose cameraOrigin,
+      CameraPose dummyOrigin,
+      Audience audience,
+      int beatIndex,
+      String beatId) {
     Objects.requireNonNull(sample, "sample");
     return new ExperienceSnapshot(
-        sample.camera(), sample.shaders(), sample.props(), audience, beatIndex, beatId, true);
+        sample.camera(),
+        sample.dummyPose(),
+        cameraOrigin,
+        dummyOrigin,
+        sample.shaders(),
+        sample.props(),
+        audience,
+        beatIndex,
+        beatId,
+        true);
   }
 
   /** Stop or natural completion: restore pose, no overlays or props. */
   public static ExperienceSnapshot restored(CameraPose pose, Audience audience) {
-    return new ExperienceSnapshot(pose, List.of(), List.of(), audience, 0, "", false);
+    return new ExperienceSnapshot(
+        pose, null, null, null, List.of(), List.of(), audience, 0, "", false);
   }
 }

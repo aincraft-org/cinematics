@@ -24,6 +24,10 @@ sealed interface ResolvedFrame permits ResolvedPath, ResolvedFade {
   double durationSeconds();
 
   SceneSample sample(double localT);
+
+  CameraPose cameraOrigin();
+
+  CameraPose dummyOrigin();
 }
 
 record ResolvedPath(String id, CinematicScene scene) implements ResolvedFrame {
@@ -37,6 +41,16 @@ record ResolvedPath(String id, CinematicScene scene) implements ResolvedFrame {
   public SceneSample sample(double localT) {
     return scene.sample(localT);
   }
+
+  @Override
+  public CameraPose cameraOrigin() {
+    return scene.keyframes().getFirst().pose();
+  }
+
+  @Override
+  public CameraPose dummyOrigin() {
+    return scene.dummyKeyframes().isEmpty() ? null : scene.dummyKeyframes().getFirst().pose();
+  }
 }
 
 record ResolvedFade(String id, double durationSeconds, String overlayId, CameraPose pose)
@@ -44,6 +58,16 @@ record ResolvedFade(String id, double durationSeconds, String overlayId, CameraP
 
   @Override
   public SceneSample sample(double localT) {
-    return new SceneSample(pose, List.of(overlayId), List.of());
+    return new SceneSample(pose, null, List.of(overlayId), List.of());
+  }
+
+  @Override
+  public CameraPose cameraOrigin() {
+    return null;
+  }
+
+  @Override
+  public CameraPose dummyOrigin() {
+    return null;
   }
 }
