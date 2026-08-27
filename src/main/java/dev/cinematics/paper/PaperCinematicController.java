@@ -53,6 +53,10 @@ public final class PaperCinematicController implements Listener {
   private final ExperienceService experienceService;
   private final ConcurrentMap<UUID, ScheduledTask> tickers = new ConcurrentHashMap<>();
   private final ConcurrentMap<UUID, AppliedState> applied = new ConcurrentHashMap<>();
+  private final ConcurrentMap<UUID, Location> playStartLocations = new ConcurrentHashMap<>();
+  private final ConcurrentMap<UUID, CameraPose> playSceneOrigins = new ConcurrentHashMap<>();
+  private final ConcurrentMap<UUID, CameraPose> playDummyOrigins = new ConcurrentHashMap<>();
+  private final ConcurrentMap<UUID, CameraRig> rigs = new ConcurrentHashMap<>();
   private PlayerSkinDummy dummies;
   private CameraDolly dolly;
 
@@ -73,10 +77,25 @@ public final class PaperCinematicController implements Listener {
 
   public CinematicResult play(Player player, String sceneName) {
     Objects.requireNonNull(player, "player");
+    UUID playerId = player.getUniqueId();
     CinematicResult result =
-        cinematicService.play(player.getUniqueId(), sceneName, poseOf(player.getLocation()));
+        cinematicService.play(playerId, sceneName, poseOf(player.getLocation()));
     if (result != CinematicResult.SUCCESS) {
       return result;
+    }
+    playStartLocations.put(playerId, player.getLocation().clone());
+    cinematicService
+        .scene(sceneName)
+        .ifPresent(
+            scene -> {
+              playSceneOrigins.put(playerId, scene.keyframes().getFirst().pose());
+              if (!scene.dummyKeyframes().isEmpty()) {
+                playDummyOrigins.put(playerId, scene.dummyKeyframes().getFirst().pose());
+              }
+            });
+    if (dummies != null) {
+      dummies.create("me", player);
+      dummies.show("me");
     }
     startTicker(player);
     return CinematicResult.SUCCESS;
@@ -84,10 +103,18 @@ public final class PaperCinematicController implements Listener {
 
   public CinematicResult playExperience(Player player, String experienceName) {
     Objects.requireNonNull(player, "player");
+    UUID playerId = player.getUniqueId();
     CinematicResult result =
-        experienceService.start(player.getUniqueId(), experienceName, poseOf(player.getLocation()));
+        experienceService.start(playerId, experienceName, poseOf(player.getLocation()));
     if (result != CinematicResult.SUCCESS) {
       return result;
+    }
+    playStartLocations.put(playerId, player.getLocation().clone());
+    playSceneOrigins.remove(playerId);
+    playDummyOrigins.remove(playerId);
+    if (dummies != null) {
+      dummies.create("me", player);
+      dummies.show("me");
     }
     startTicker(player);
     return CinematicResult.SUCCESS;
@@ -113,10 +140,22 @@ public final class PaperCinematicController implements Listener {
         if (state != null) {
           state.removeProps();
         }
+        clearPlaybackState(playerId, null);
       }
     }
     tickers.clear();
     applied.clear();
+    for (UUID playerId : List.copyOf(rigs.keySet())) {
+      Player player = Bukkit.getPlayer(playerId);
+      CameraRig rig = rigs.remove(playerId);
+      if (rig != null && player != null) {
+        rig.destroy(player);
+      }
+    }
+    playStartLocations.clear();
+    playSceneOrigins.clear();
+    playDummyOrigins.clear();
+    rigs.clear();
     if (dummies != null) {
       dummies.hideAllShown();
     }
@@ -134,6 +173,7 @@ public final class PaperCinematicController implements Listener {
     if (state != null) {
       state.removeProps();
     }
+    clearPlaybackState(player.getUniqueId(), player);
     if (dummies != null) {
       dummies.hideAllShown();
     }
@@ -152,6 +192,29 @@ public final class PaperCinematicController implements Listener {
         location.getZ(),
         location.getYaw(),
         location.getPitch());
+  }
+
+  static CameraPose offsetIfRelative(CameraPose sampled, CameraPose origin, Location start) {
+    if (sampled == null || start == null) {
+      return sampled;
+    }
+    if (!"relative".equals(sampled.worldIdentity())) {
+      return sampled;
+    }
+    World world = start.getWorld();
+    if (world == null) {
+      return sampled;
+    }
+    double originX = origin == null ? 0.0 : origin.x();
+    double originY = origin == null ? 0.0 : origin.y();
+    double originZ = origin == null ? 0.0 : origin.z();
+    return new CameraPose(
+        world.getUID().toString(),
+        start.getX() + sampled.x() - originX,
+        start.getY() + sampled.y() - originY,
+        start.getZ() + sampled.z() - originZ,
+        sampled.yaw(),
+        sampled.pitch());
   }
 
   static Location locationOf(CameraPose pose) {
@@ -213,17 +276,79 @@ public final class PaperCinematicController implements Listener {
   }
 
   private void apply(Player player, PlaybackSnapshot snapshot) {
-    Location location = locationOf(snapshot.pose());
-    if (location != null) {
-      player.teleport(location);
+    UUID playerId = player.getUniqueId();
+    if (!snapshot.playing()) {
+      CameraPose restored = snapshot.pose();
+      CameraRig rig = rigs.remove(playerId);
+      if (rig != null) {
+        rig.destroy(player, restored);
+      } else if (dolly != null && dolly.isHidden(player)) {
+        dolly.restore(player, restored);
+      } else {
+        Location location = locationOf(restored);
+        if (location != null) {
+          player.teleport(location);
+        }
+      }
+      playStartLocations.remove(playerId);
+      playSceneOrigins.remove(playerId);
+      playDummyOrigins.remove(playerId);
+      if (dummies != null) {
+        dummies.hide("me");
+        dummies.destroy("me");
+      }
+      AppliedState state = applied.remove(playerId);
+      if (state != null) {
+        state.clear(player);
+      }
+      return;
     }
-    AppliedState state = applied.computeIfAbsent(player.getUniqueId(), id -> new AppliedState());
+
+    Location start = playStartLocations.get(playerId);
+    CameraPose cameraOrigin =
+        snapshot.cameraOrigin() != null ? snapshot.cameraOrigin() : playSceneOrigins.get(playerId);
+    CameraPose dummyOrigin =
+        snapshot.dummyOrigin() != null ? snapshot.dummyOrigin() : playDummyOrigins.get(playerId);
+    CameraPose cameraPose = offsetIfRelative(snapshot.pose(), cameraOrigin, start);
+    CameraPose dummyPose =
+        snapshot.dummyPose() == null
+            ? null
+            : offsetIfRelative(snapshot.dummyPose(), dummyOrigin, start);
+
+    if (dolly != null) {
+      rigs.compute(
+          playerId,
+          (id, existing) -> {
+            if (existing == null) {
+              return CameraRig.spawn(dolly, player, cameraPose);
+            }
+            existing.update(player, cameraPose);
+            return existing;
+          });
+    } else {
+      Location location = locationOf(cameraPose);
+      if (location != null) {
+        player.teleport(location);
+      }
+    }
+
+    if (dummies != null && dummyPose != null) {
+      dummies.moveTo("me", dummyPose);
+    }
+
+    AppliedState state = applied.computeIfAbsent(playerId, id -> new AppliedState());
     state.syncShaders(player, snapshot.shaders());
     state.syncProps(plugin, player, snapshot.props());
-    if (!snapshot.playing()) {
-      state.clear(player);
-      applied.remove(player.getUniqueId());
+  }
+
+  private void clearPlaybackState(UUID playerId, Player player) {
+    CameraRig rig = rigs.remove(playerId);
+    if (rig != null && player != null) {
+      rig.destroy(player);
     }
+    playStartLocations.remove(playerId);
+    playSceneOrigins.remove(playerId);
+    playDummyOrigins.remove(playerId);
   }
 
   private static final class AppliedState {
