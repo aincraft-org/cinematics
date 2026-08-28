@@ -27,7 +27,7 @@ Evidence tags in this doc:
 
 > "When you join a world, the official resource pack will automatically start downloading. It is possible to play without it, but it is not recommended." [A1, "Joining the Server"]
 
-This matches a server-side, resource-pack-driven model.
+This directly documents a resource-pack-based join flow; it does not by itself establish the server's packet or GUI implementation.
 
 **REPORTED**: Multiple community sources describe Wynncraft as vanilla-compatible, meaning players do not need a client mod to join [B,C]. Client-side mods such as Wynntils, WynnIris, or shader packs are optional enhancements [C].
 
@@ -137,9 +137,9 @@ The page also shows screenshots of the class selection, character creation, and 
 
 ### Mapping to `cinematics`
 
-The repo's intended success scenario is: "`first-join`: fade, fly a camera path, park in a class-select studio until the player picks a mannequin, fade, fire `ClassPicked`" [D:Living Spec]. This is the same high-level shape as Wynncraft's join flow, with these differences:
+The repo's intended success scenario is: "`first-join`: fade, fly a camera path, park in a class-select studio until the player picks a mannequin, fade, fire `ClassPicked`" [D:Living Spec]. This resembles the wiki's documented join-to-class-selection flow, but it is not evidence that Wynncraft uses the same scene-graph implementation.
 
-- **Wynncraft**: resource-pack-driven GUI with font textures and persistent character slots.
+- **Wynncraft**: a class-selection menu with persistent character slots; its font-texture and protected-studio implementation details remain reported rather than directly documented here.
 - **`cinematics`**: planned to use `HoldFrame` + actor mannequins + `ClassPickedEvent`, no character data, no mandatory resource pack.
 
 For the `cinematics` plugin to get the Wynncraft *look*, it would need either:
@@ -191,15 +191,15 @@ The repo uses JSON persistence for scenes and experiences and has no scripting l
 
 ## 9. Mapping reported Wynncraft techniques to the `cinematics` roadmap
 
-| Wynncraft technique (as reported) | Confidence | Already in `cinematics` | Next / future slice |
+| Wynncraft-relevant technique / analogue | Evidence for Wynncraft | Already in `cinematics` | Next / future slice |
 |---|---|---|---|
 | Recorded actor performances | REPORTED | `PlayerSkinDummy` in-memory [D] | `api.Actor`, recording, frame playback |
 | Smooth camera via ridden/spectated rig | REPORTED / INFERRED | `CameraDolly` per-tick teleport [D] | Optional spectate/rig entity mode |
-| Camera keyframe paths | DIRECT (behavior observed) | `CinematicScene` [D] | Ease functions, Catmull-Rom/Bezier |
-| Vanilla shader overlays | DIRECT (vanilla effects) | `VanillaShaderOverlays` [D] | More vanilla effects, timed sound, titles |
+| Camera keyframe paths | Not established for Wynncraft; DIRECT in repo | `CinematicScene` [D] | Ease functions, Catmull-Rom/Bezier |
+| Vanilla shader overlays | Not established for Wynncraft; DIRECT in repo | `VanillaShaderOverlays` [D] | More vanilla effects, timed sound, titles |
 | Per-player phasing | REPORTED / INFERRED | Audience `SUBJECT` [D] | Packet-level block/entity filtering |
 | Private instances | REPORTED | Out of scope [D] | Void-world / schematic studio copies |
-| Class-select studio | DIRECT (screenshots + wiki, but page marked outdated) | `StudioBeat` planned [D] | `HoldFrame`, freeze, actor placements |
+| Class-selection menu (not studio implementation) | DIRECT (wiki text/screenshots; page marked outdated) | `StudioBeat` planned [D] | `HoldFrame`, freeze, actor placements |
 | Resource-pack UI | REPORTED | Not integrated | Optional partner pack or font-based GUI |
 | WynnScript/YAML content authoring | DIRECT (wiki) | JSON experiences [D] | YAML/JSON command lists, maybe a DSL |
 
