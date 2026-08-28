@@ -4,26 +4,30 @@
 > Date: 2026-08-27
 > Repo: `/home/jlo/dev/cinematics`
 
-This doc collects what is publicly reported about Wynncraft's cinematic and UI systems. Because the server is closed-source, many details come from community reverse-engineering, forum summaries, and secondhand sources. Claims are marked as **direct** (quoted or shown by an official source), **reported** (stated in a community thread/wiki with no primary dev confirmation), or **inferred** (reasonable technical extrapolation from behavior and tooling). This is not a dev-sanctioned specification.
+This doc collects what is publicly reported about Wynncraft's cinematic and UI systems. Because the server is closed-source, many details come from community reverse-engineering, forum summaries, and secondhand sources. Claims are marked as **direct** (verbatim or shown by a public source), **reported** (stated in a community thread/wiki with no primary dev confirmation), or **inferred** (reasonable technical extrapolation from behavior and tooling). This is not a dev-sanctioned specification.
 
 ## 1. Scope and evidence quality
 
 The main evidence used:
 
-- Wynncraft Fandom wiki (official wiki, player-edited, but often the closest public source to the team) [A].
+- Wynncraft Fandom wiki (public Fandom wiki, community-edited, not developer-sanctioned) [A].
 - Wynncraft official forums (public thread titles and summaries; most full threads require login to read) [B].
 - Reddit /r/WynnCraft and SpigotMC community discussions (secondhand, reverse-engineered, or comparative) [C].
 - The `cinematics` repo's own design docs and code [D].
 
 Evidence tags in this doc:
 
-- **DIRECT** — from an official wiki page or a publicly readable source.
+- **DIRECT** — verbatim text from a public source, or behavior/screenshots shown by that source.
 - **REPORTED** — from a forum summary, Reddit, or community source.
 - **INFERRED** — a plausible mechanism derived from behavior, but not directly confirmed.
 
 ## 2. The big picture: vanilla clients, server-side tricks
 
-**DIRECT**: Wynncraft's wiki states the official resource pack is sent to the client on join and that it is "possible to play without it, but it is not recommended" [A:Newcomer's Guide]. This matches the server-side, resource-pack-driven model.
+**DIRECT**: The Fandom wiki's `Newcomer's Guide` says:
+
+> "When you join a world, the official resource pack will automatically start downloading. It is possible to play without it, but it is not recommended." [A1, "Joining the Server"]
+
+This matches a server-side, resource-pack-driven model.
 
 **REPORTED**: Multiple community sources describe Wynncraft as vanilla-compatible, meaning players do not need a client mod to join [B,C]. Client-side mods such as Wynntils, WynnIris, or shader packs are optional enhancements [C].
 
@@ -31,7 +35,7 @@ This is the same constraint the `cinematics` plugin has chosen: "Vanilla clients
 
 ## 3. The Actor System — reported, not directly observed
 
-The **Actor System** is the most distinctive cinematic technology attributed to Wynncraft, but the primary evidence is a forum thread title and search summaries because the full thread requires login [B:Actor System thread].
+The **Actor System** is the most distinctive cinematic technology attributed to Wynncraft, but the primary evidence is a forum thread title and search summaries because the full thread requires login [B1].
 
 What is reported:
 
@@ -53,12 +57,12 @@ The repo's `PlayerSkinDummy` / `FakePlayerPackets` is already heading in this di
 
 ## 4. Camera work — reported historical and modern techniques
 
-**REPORTED / INFERRED**: Wynncraft's smooth camera motion is described in community sources as using an invisible entity that the player rides or spectates [B,C]. The entity is moved along a path, and because the player is mounted or spectating, the client handles interpolation instead of the server teleporting the player every tick [C:SpigotMC thread summary].
+**REPORTED / INFERRED**: Wynncraft's smooth camera motion is described in community sources as using an invisible entity that the player rides or spectates [B,C]. The entity is moved along a path, and because the player is mounted or spectating, the client handles interpolation instead of the server teleporting the player every tick [C2].
 
 The reported evolution:
 
 - **Legacy** (reported): invisible item drops or armor stands.
-- **Modern options** (reported/inferred): display entities (`item_display`, `text_display`) with `teleport_duration`, or `/spectate` targeting a rig entity [C].
+- **Modern options** (reported/inferred): display entities (`item_display`, `text_display`) with `teleport_duration`, or `/spectate` targeting a rig entity [C2].
 
 **Important**: These are community-reported and comparative descriptions. There is no direct quote from a Wynncraft developer confirming the exact entity type or command in current use.
 
@@ -71,16 +75,20 @@ The repo's `CameraDolly` currently teleports the real player each tick and hides
 
 ## 5. Phasing and instancing — reported, mechanism inferred
 
-**DIRECT**: The Fandom wiki's `Newcomer's Guide` confirms that blocks cannot be broken in the world, that most blocks are decorative, and that loot chests are a separate per-player system [A]. The `Loot Chests` section describes chests that spawn on fixed locations and refill after being claimed, which is consistent with per-player instancing of containers.
+**DIRECT**: The Fandom wiki's `Newcomer's Guide` says:
+
+> "In the world of Wynncraft, **blocks are unable to be broken**. An exception is flowerpots, which have a chance to drop emeralds (and a low chance to drop items). The majority of the blocks you see will be decorative." [A1, "Obtaining Items"]
+
+This confirms that the overworld is a curated, mostly non-interactive space, which makes server-side environment control possible.
 
 **REPORTED**: Community sources describe two related ideas:
 
-- **Instancing**: players are teleported to private copies of areas for dungeons or quest sequences, so one player's progress does not affect another [B,C].
-- **Phasing**: the same physical location is shown differently to different players based on quest progress, achieved by modifying the packets sent to each client [B,C].
+- **Instancing**: players are teleported to private copies of areas for dungeons or quest sequences, so one player's progress does not affect another [B2,C].
+- **Phasing**: the same physical location is shown differently to different players based on quest progress, achieved by modifying the packets sent to each client [B2,C].
 
 **INFERRED**: "Phasing" in a Minecraft server is technically implemented by intercepting and rewriting entity/block/chunk packets per player, or by physically moving players to separate but identical map copies. The community claims packet interception; this is plausible but not directly confirmed.
 
-**REPORTED**: During cutscenes, other players may be made invisible or appear as "ghosts" so they do not block the narrative [B,C].
+**REPORTED**: During cutscenes, other players may be made invisible or appear as "ghosts" so they do not block the narrative [B2,C].
 
 ### Mapping to `cinematics`
 
@@ -96,27 +104,34 @@ This is the part of the user's question with the most direct evidence.
 
 ### What is directly known
 
-**DIRECT**: The `Newcomer's Guide` on the Fandom wiki describes the join flow:
+**DIRECT**: The Fandom wiki's `Newcomer's Guide` (which has an "Outdated Content" banner) says, under "Joining the Server":
 
-- The official resource pack downloads automatically when joining a world [A].
-- The class selection screen appears after that [A].
-- It has a green plus button to create a character [A].
-- The icons in the upper row are the regular classes [A].
-- Donor ranks get more character slots: 6 for no rank, 9 for VIP, 11 for VIP+, 14 for HERO [A].
-- `/toggle autojoin` skips the selection screen and uses the last-selected class [A].
-- Players switch classes with `/kill` [A].
+> "When you join a world, the official resource pack will automatically start downloading. It is possible to play without it, but it is not recommended."
+> "After this, you will see the class selection screen. Click the green plus button. The icons in the upper row are the regular, non-donor classes. From left to right, these are Bowman, Speary, Stickman, Josh Wick, and Useless. Choose one and you will be sent right into the game. If you already have started a class, click on its icon and play. You can skip this step using the command `/toggle autojoin` so the game will automatically choose the class you last selected. To undo this, enter the command again." [A1]
 
-The wiki also shows screenshots of the class selection, character creation, and class info menus [A].
+**DIRECT**: The same page shows the class selection image with the caption:
+
+> "Class selection menu. Players without a rank have 6 slots, those with VIP have 9, VIP+ has 11, and HERO 14." [A1]
+
+**DIRECT**: Under "Multiple classes":
+
+> "Players may have different classes, each with different progress. They may switch between them using `/kill` command." [A1]
+
+**DIRECT**: Under "Items":
+
+> "Wynncraft has an official resource pack, which is required to be able to view the different weapon models." [A1]
+
+The page also shows screenshots of the class selection, character creation, and class info menus [A1].
 
 ### What is reported/inferred about the implementation
 
 **REPORTED**: The class selection screen is server-side, and the player is held in a protected area where they cannot take damage, chat, or interact normally until a class is chosen [B,C].
 
-**REPORTED**: The custom UI relies heavily on the official resource pack. If the pack fails to load, players report a black screen, falling into the void, or default item textures replacing custom ones [B,C].
+**REPORTED**: The custom UI relies heavily on the official resource pack. If the pack fails to load, players report a black screen, falling into the void, or default item textures replacing custom ones [B4,B5,C].
 
-**REPORTED**: Wynncraft's modern GUI elements, including advanced menus, are said to use **font textures** (custom font/Unicode mappings) rather than standard `textures/gui/*.png` files [B].
+**REPORTED**: Wynncraft's modern GUI elements, including advanced menus, are said to use **font textures** (custom font/Unicode mappings) rather than standard `textures/gui/*.png` files [B6].
 
-**REPORTED**: The official resource pack is encrypted, making it hard to inspect without tools like MCRPX [B].
+**REPORTED**: The official resource pack is encrypted, making it hard to inspect without tools like MCRPX [B6].
 
 **INFERRED**: Because the class selection is a custom UI inside a Minecraft client, the server is almost certainly sending packets to show item/entity/element representations that the resource pack re-textures into buttons. The exact protocol is not public.
 
@@ -136,9 +151,21 @@ The second is more aligned with the current "vanilla clients only" boundary [D:L
 
 ## 7. Scripting and data-driven content
 
-**DIRECT**: The Wynncraft Fandom `Content Team` page explicitly states that **Game Masters (GMs)** "work with YAML files (.yml) and a proprietary scripting language called Wynnscript" to deliver quests, discoveries, minigames, events, lootruns, mobs, and boss altars [A]. It also states that **Scripters** "work with Wynnscript, a proprietary scripting language made specifically for work on Wynncraft" [A]. The page further notes that the **CMD** (command-blocker) role is being replaced by Scripter [A].
+**DIRECT**: The Wynncraft Fandom `Content Team` page says, under "GMs":
 
-This is a strong, direct source. It does not, however, describe the language's syntax in detail or whether Wynnscript is used for *cinematics* specifically. Cinematics may be handled by the same tooling, a separate tool, or command blocks.
+> "GMs are responsible for the creation of playable content within Wynncraft. They work with [YAML](https://en.wikipedia.org/wiki/YAML) files (.yml) and a proprietary scripting language called Wynnscript to deliver Quests, Discoveries, Minigames, Events, Lootruns/Lootrun Challenges, and Mobs, and Boss Altars." [A2]
+
+**DIRECT**: Under "Scripter":
+
+> "Scripters work with Wynnscript, a proprietary scripting language made specifically for work on Wynncraft. They use it to make content given a GM's or Manager's instructions, or work on expanding Wynnscript's functionality by making new libraries for other Scripters or GMs to use." [A2]
+
+**DIRECT**: Under "CMD":
+
+> "The term CMD (or Command Block(er)) refers to a role within the team dedicated exclusively to Command Block-based creations (such as certain cutscenes, such as those found in the original Flight in Distress, or puzzles like the Wire Puzzle in Heart of Llevigar)." [A2]
+
+> "CMD will soon be replaced by Scripter." [A2]
+
+These are the strongest direct sources. They do not, however, describe Wynnscript's syntax in detail, or whether Wynnscript is used for *cinematics* specifically. Cinematics may be handled by the same tooling, a separate tool, or command blocks.
 
 **INFERRED**: Because Wynnscript exists for quest/mob/event content, it is plausible that modern cutscenes are authored in it or in a related tool, but the specific cinematic authoring pipeline is not documented.
 
@@ -152,11 +179,13 @@ The repo uses JSON persistence for scenes and experiences and has no scripting l
 
 ## 8. Resource pack and visual layer
 
-**DIRECT**: The `Newcomer's Guide` confirms that Wynncraft has an official resource pack and that it is required to view different weapon models [A].
+**DIRECT**: The Fandom wiki's `Newcomer's Guide` says:
 
-**REPORTED**: The pack is said to be encrypted and to contain custom item models, weapon textures, armor, and UI [B]. Modern GUI elements are reported to use font textures [B].
+> "Wynncraft has an official resource pack, which is required to be able to view the different weapon models." [A1, "Items"]
 
-**REPORTED**: Custom skyboxes, region fog, and lighting effects can conflict with standard shaders. WynnIris (a community Iris fork) is reported to support Wynncraft's custom skyboxes [C].
+**REPORTED**: The pack is said to be encrypted and to contain custom item models, weapon textures, armor, and UI [B6]. Modern GUI elements are reported to use font textures [B6].
+
+**REPORTED**: Custom skyboxes, region fog, and lighting effects can conflict with standard shaders. WynnIris (a community Iris fork) is reported to support Wynncraft's custom skyboxes [C1].
 
 **INFERRED**: Because `cinematics` explicitly excludes client shader packs [D:Living Spec], the only vanilla-compatible ways to create atmosphere are: vanilla potion overlays (already supported), biome/weather packet tricks, and display-entity props.
 
@@ -170,13 +199,13 @@ The repo uses JSON persistence for scenes and experiences and has no scripting l
 | Vanilla shader overlays | DIRECT (vanilla effects) | `VanillaShaderOverlays` [D] | More vanilla effects, timed sound, titles |
 | Per-player phasing | REPORTED / INFERRED | Audience `SUBJECT` [D] | Packet-level block/entity filtering |
 | Private instances | REPORTED | Out of scope [D] | Void-world / schematic studio copies |
-| Class-select studio | DIRECT (screenshots + wiki) | `StudioBeat` planned [D] | `HoldFrame`, freeze, actor placements |
+| Class-select studio | DIRECT (screenshots + wiki, but page marked outdated) | `StudioBeat` planned [D] | `HoldFrame`, freeze, actor placements |
 | Resource-pack UI | REPORTED | Not integrated | Optional partner pack or font-based GUI |
 | WynnScript/YAML content authoring | DIRECT (wiki) | JSON experiences [D] | YAML/JSON command lists, maybe a DSL |
 
 ## 10. Recommended next steps (inferred from the mapping)
 
-These are the author's suggestions for moving the `cinematics` plugin closer to the *reported* Wynncraft style without claiming it is an exact copy:
+These are suggestions for moving the `cinematics` plugin closer to the *reported* Wynncraft style without claiming it is an exact copy:
 
 1. **Prove the actor renderer** — complete the `PlayerSkinDummy` / `CameraDolly` Slice 1 plan, then add `Actor` value types and persistence.
 2. **Add a camera rig mode** (optional) — spawn an invisible `item_display` and spectate it for smoother camera motion, with the current teleport mode as fallback.
@@ -186,13 +215,14 @@ These are the author's suggestions for moving the `cinematics` plugin closer to 
 
 ## 11. Sources
 
-### A. Wynncraft Fandom wiki (public, official wiki)
+### A. Wynncraft Fandom wiki (public, community-edited Fandom wiki)
 
 A1. `Newcomer's Guide` — https://wynncraft.fandom.com/wiki/Newcomer%27s_Guide
-- Direct quotes used: resource pack downloads on join, class selection screen, green plus, donor rank slots, `/toggle autojoin`, `/kill` to switch class, weapon models require the pack, blocks cannot be broken, loot chests respawn on fixed locations.
+- Verbatim excerpts are in the Appendix below.
+- Note: the page has an "Outdated Content" banner at the top.
 
 A2. `Content Team` — https://wynncraft.fandom.com/wiki/Content_Team
-- Direct quotes used: GMs work with YAML and Wynnscript; Scripters work with Wynnscript; CMD role is being replaced by Scripter.
+- Verbatim excerpts are in the Appendix below.
 
 ### B. Wynncraft official forums (titles and search summaries; full threads require login)
 
@@ -232,3 +262,54 @@ D2. `docs/superpowers/specs/2026-08-19-experience-director-design.md`
 D3. `docs/superpowers/specs/2026-08-26-player-skin-dummy-design.md`
 D4. `src/main/java/dev/cinematics/paper/VanillaShaderOverlays.java`
 D5. `src/main/java/dev/cinematics/api/CinematicScene.java`
+
+---
+
+## Appendix: Verbatim Fandom excerpts
+
+This appendix reproduces the exact text used for the strongest classifications. It exists so readers can audit the claims without relying on paraphrase.
+
+### A1. `Newcomer's Guide` (https://wynncraft.fandom.com/wiki/Newcomer%27s_Guide)
+
+The page has a banner reading:
+
+> "Outdated Content — The following page contains information about content that is outdated and has not been updated yet."
+
+#### Section "Joining the Server"
+
+> "When you join a world, the official resource pack will automatically start downloading. It is possible to play without it, but it is not recommended. If you have trouble downloading the resource pack, follow the steps on this thread."
+> "After this, you will see the class selection screen. Click the green plus button. The icons in the upper row are the regular, non-donor classes. From left to right, these are Bowman, Speary, Stickman, Josh Wick, and Useless. Choose one and you will be sent right into the game. If you already have started a class, click on its icon and play. You can skip this step using the command `/toggle autojoin` so the game will automatically choose the class you last selected. To undo this, enter the command again."
+
+Image caption:
+
+> "Class selection menu. Players without a rank have 6 slots, those with VIP have 9, VIP+ has 11, and HERO 14."
+
+#### Section "Multiple classes"
+
+> "Players may have different classes, each with different progress. They may switch between them using `/kill` command. Each class is completely separate from the rest except Bank, Trade Market and guilds, rank and friends."
+
+#### Section "Obtaining Items"
+
+> "In the world of Wynncraft, **blocks are unable to be broken**. An exception is flowerpots, which have a chance to drop emeralds (and a low chance to drop items). The majority of the blocks you see will be decorative."
+
+#### Section "Items"
+
+> "Wynncraft has an official resource pack, which is required to be able to view the different weapon models."
+
+### A2. `Content Team` (https://wynncraft.fandom.com/wiki/Content_Team)
+
+#### Section "GMs"
+
+> "GMs are responsible for the creation of playable content within Wynncraft. They work with YAML files (.yml) and a proprietary scripting language called Wynnscript to deliver Quests, Discoveries, Minigames, Events, Lootruns/Lootrun Challenges, and Mobs, and Boss Altars."
+
+#### Section "Scripter"
+
+> "Scripters work with Wynnscript, a proprietary scripting language made specifically for work on Wynncraft. They use it to make content given a GM's or Manager's instructions, or work on expanding Wynnscript's functionality by making new libraries for other Scripters or GMs to use."
+
+> "CMDs and Scripters share a very similar skillset. Both require intricate knowledge of successful programming practices and an ability to apply them to Minecraft. Both require ingenuity and creativity as well as knowledge of how to design simple, scalable systems. The difference is almost exclusively in the medium they prefer to work with: Command Blocks or Wynnscript."
+
+#### Section "CMD"
+
+> "The term CMD (or Command Block(er)) refers to a role within the team dedicated exclusively to Command Block-based creations (such as certain cutscenes, such as those found in the original Flight in Distress, or puzzles like the Wire Puzzle in Heart of Llevigar). It is increasingly common for CMDs to hybridize as a Scripter as well."
+
+> "CMD will soon be replaced by Scripter."
