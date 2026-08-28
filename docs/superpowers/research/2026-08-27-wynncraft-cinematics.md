@@ -1,178 +1,234 @@
-# Wynncraft Cinematic Research — What They Actually Do
+# Wynncraft Cinematic Research — Reported Techniques and Inferences
 
 > Status: research note
 > Date: 2026-08-27
 > Repo: `/home/jlo/dev/cinematics`
 
-This doc is the result of the question: "how does Wynncraft create their cinematic work, login screen, selection screen, etc." It pulls together public forum threads, wiki pages, community reverse-engineering, and Reddit discussion, then maps those findings onto the `cinematics` plugin architecture.
+This doc collects what is publicly reported about Wynncraft's cinematic and UI systems. Because the server is closed-source, many details come from community reverse-engineering, forum summaries, and secondhand sources. Claims are marked as **direct** (quoted or shown by an official source), **reported** (stated in a community thread/wiki with no primary dev confirmation), or **inferred** (reasonable technical extrapolation from behavior and tooling). This is not a dev-sanctioned specification.
 
-Key takeaway up front: Wynncraft's cinematic feel is not one trick. It is the combination of (1) a server-side **Actor System** that records and replays NPC performances, (2) **camera rigging** via invisible ridden/spectated entities, (3) **per-player phasing and instancing** to isolate cutscenes, (4) a **mandatory encrypted resource pack** that supplies custom models, fonts, and UI, and (5) a **proprietary scripting layer** (WynnScript/YAML) that lets the Content Team author quests and cutscenes without touching Java.
+## 1. Scope and evidence quality
 
-## 1. The Big Picture: Vanilla-Compatible but Server-Heavy
+The main evidence used:
 
-Wynncraft is a vanilla-compatible Minecraft server. Players do not need a mod to join [1][2]. The cinematic work is done on the server and delivered through packets, resource packs, and vanilla effects. Client-side mods like Wynntils, WynnIris, or shader packs can enhance the experience, but they are not required [3].
+- Wynncraft Fandom wiki (official wiki, player-edited, but often the closest public source to the team) [A].
+- Wynncraft official forums (public thread titles and summaries; most full threads require login to read) [B].
+- Reddit /r/WynnCraft and SpigotMC community discussions (secondhand, reverse-engineered, or comparative) [C].
+- The `cinematics` repo's own design docs and code [D].
 
-That is the same constraint the `cinematics` plugin has chosen: "Vanilla clients must work" [4]. So the Wynncraft approach is directly applicable.
+Evidence tags in this doc:
 
-## 2. The Actor System — Recorded NPC Performances
+- **DIRECT** — from an official wiki page or a publicly readable source.
+- **REPORTED** — from a forum summary, Reddit, or community source.
+- **INFERRED** — a plausible mechanism derived from behavior, but not directly confirmed.
 
-The most distinctive Wynncraft cinematic technology is its **Actor System**.
+## 2. The big picture: vanilla clients, server-side tricks
 
-- An **actor** is an NPC controlled by a recorded player performance.
-- During authoring, a Content Team member is assigned an `actorId` and their movements are captured in real time: walking, looking, arm swings, item switching, and pathing [5].
-- The capture is transcribed into **Actor Frames**.
-- At playback, those frames are sent to the client through NPC entities. Because the recording is tick-accurate, the playback is smooth and mirrors the original performance [5].
-- A **Scene Editor** manages the overall timeline: triggering dialogue, running commands, opening doors, explosions, and camera paths.
-- An **Actor Editor** gives per-actor control for fine-tuning behavior and synchronization [6].
+**DIRECT**: Wynncraft's wiki states the official resource pack is sent to the client on join and that it is "possible to play without it, but it is not recommended" [A:Newcomer's Guide]. This matches the server-side, resource-pack-driven model.
 
-This is conceptually what `PlayerSkinDummy` / `FakePlayerPackets` is building toward: a client-side player entity that can be moved and posed. The difference is that Wynncraft's actors are recorded from a live performance, not hand-authored pose by pose.
+**REPORTED**: Multiple community sources describe Wynncraft as vanilla-compatible, meaning players do not need a client mod to join [B,C]. Client-side mods such as Wynntils, WynnIris, or shader packs are optional enhancements [C].
 
-### Implication for this project
+This is the same constraint the `cinematics` plugin has chosen: "Vanilla clients must work" [D:Living Spec]. The Wynncraft approach is therefore a useful reference point, not an exact blueprint.
 
-The `cinematics` plugin currently has an in-memory dummy (`PlayerSkinDummy`) and a `CameraDolly` that teleports the real player [7]. To get Wynncraft-style actors, the next slices should add:
+## 3. The Actor System — reported, not directly observed
 
-- `Actor` value type with `PlayerSkin` snapshot and a timeline of poses/actions.
-- Recording mode: an operator runs a command, performs the movement, then stops recording; the plugin stores the pose/action frames.
-- Playback from frames inside `CinematicScene.sample` / `Experience.sample`.
-- Per-viewer spawn/hide of actor entities (already the plan for `SUBJECT` audience) [4].
+The **Actor System** is the most distinctive cinematic technology attributed to Wynncraft, but the primary evidence is a forum thread title and search summaries because the full thread requires login [B:Actor System thread].
 
-## 3. Camera Work — Ride/Spectate a Moving Rig
+What is reported:
 
-Wynncraft's smooth camera motion is historically done by **spawning an invisible entity and having the player ride or spectate it** [8]. The entity is moved at a constant velocity between pre-defined points. Because the player is mounted or spectating, the client handles the interpolation instead of the server teleporting the player every tick.
+- Wynncraft uses an internal **Actor System** to record player movements and replay them through NPCs for cutscenes [B,C].
+- An editor assigns a player to an `actorId`, captures walking, looking, arm swings, item switching, and pathing, then transcribes the capture into **Actor Frames** [B,C].
+- Playback is tick-accurate, producing smooth, choreographed sequences [B,C].
+- A **Scene Editor** is said to manage the timeline (dialogue, commands, camera paths), and an **Actor Editor** is said to give per-actor fine-tuning [B,C].
 
-Evolution of the trick:
+**INFERRED**: The actors are almost certainly client-side NPC entities spawned with packets, because vanilla Minecraft has no server-side actor concept and the server cannot render a scene itself.
 
-- Legacy: invisible item drops or armor stands.
-- Modern: display entities (`item_display`, `text_display`) with `teleport_duration` for native client interpolation [8].
-- Alternative: `/spectate` the rig entity for a jitter-free locked camera [8].
+### Mapping to `cinematics`
 
-### Implication for this project
+The repo's `PlayerSkinDummy` / `FakePlayerPackets` is already heading in this direction: it spawns a client-side player entity from a `PlayerProfile` [D:Player Skin Dummy Design]. The gap is the recording/playback pipeline. To get Wynncraft-style actors, future slices would need:
 
-The `cinematics` plugin currently does **per-tick teleport of the real player** via `CameraDolly.apply` [7]. This works for vanilla clients but can be jittery and leaves the player body visible unless hidden. To match Wynncraft:
+- An `Actor` value type with a `PlayerSkin` snapshot and a timeline of poses/actions.
+- A recording mode that captures an operator's movement as frames.
+- Playback inside `CinematicScene.sample` / `Experience.sample`.
+- Per-viewer spawn/hide (already planned for `SUBJECT` audience) [D:Living Spec].
+
+## 4. Camera work — reported historical and modern techniques
+
+**REPORTED / INFERRED**: Wynncraft's smooth camera motion is described in community sources as using an invisible entity that the player rides or spectates [B,C]. The entity is moved along a path, and because the player is mounted or spectating, the client handles interpolation instead of the server teleporting the player every tick [C:SpigotMC thread summary].
+
+The reported evolution:
+
+- **Legacy** (reported): invisible item drops or armor stands.
+- **Modern options** (reported/inferred): display entities (`item_display`, `text_display`) with `teleport_duration`, or `/spectate` targeting a rig entity [C].
+
+**Important**: These are community-reported and comparative descriptions. There is no direct quote from a Wynncraft developer confirming the exact entity type or command in current use.
+
+### Mapping to `cinematics`
+
+The repo's `CameraDolly` currently teleports the real player each tick and hides them from other players [D:Player Skin Dummy Design]. This is a valid vanilla-client approach, but the reported Wynncraft-style alternatives are worth noting as future options:
 
 - Add an **optional camera rig mode**: spawn an invisible `item_display` with `teleport_duration`, spectate it, and move the rig along the interpolated path.
-- Keep the current teleport mode as the fallback for old clients or spectator-unfriendly scenes.
-- Hide the real player from audience (already partly done by `CameraDolly` hiding the player [7]).
+- Keep the current teleport mode as a fallback.
 
-## 4. Phasing and Instancing — Isolating Cutscenes
+## 5. Phasing and instancing — reported, mechanism inferred
 
-A huge part of Wynncraft's immersion is **phasing**.
+**DIRECT**: The Fandom wiki's `Newcomer's Guide` confirms that blocks cannot be broken in the world, that most blocks are decorative, and that loot chests are a separate per-player system [A]. The `Loot Chests` section describes chests that spawn on fixed locations and refill after being claimed, which is consistent with per-player instancing of containers.
 
-- **Instancing**: the player is teleported to a private copy of an area, e.g., a dungeon or a quest sequence. Progress (mobs killed, doors opened, chests looted) does not affect other players [9].
-- **Phasing**: the same physical location is shown differently to different players based on quest progress. For example, one player sees a village rebuilt, another sees it destroyed. This is done by **packet interception**: the server modifies the data sent to each client [9].
-- During cutscenes, other players may be made invisible or appear as "ghosts" so they do not block the narrative [9].
+**REPORTED**: Community sources describe two related ideas:
 
-### Implication for this project
+- **Instancing**: players are teleported to private copies of areas for dungeons or quest sequences, so one player's progress does not affect another [B,C].
+- **Phasing**: the same physical location is shown differently to different players based on quest progress, achieved by modifying the packets sent to each client [B,C].
 
-The `cinematics` plugin explicitly lists "Instanced void worlds / schematic paste" as Future and "Audience is a session field, not world instancing" as a decision [4]. That is the right call for slice order. To move toward Wynncraft-style phasing later, the project should eventually:
+**INFERRED**: "Phasing" in a Minecraft server is technically implemented by intercepting and rewriting entity/block/chunk packets per player, or by physically moving players to separate but identical map copies. The community claims packet interception; this is plausible but not directly confirmed.
 
-- Build a per-player block/entity packet filter (like the `FakePlayerPackets` layer already in place [7]).
-- Support cloning a build to a private world or a void studio for a single player.
-- Hide other players from the subject during `SUBJECT` audience mode (already in the `CameraDolly` hide logic, but it needs to generalize to audience `SPECTATORS` / `PUBLIC` [4]).
+**REPORTED**: During cutscenes, other players may be made invisible or appear as "ghosts" so they do not block the narrative [B,C].
 
-## 5. The Login / Class Selection Screen
+### Mapping to `cinematics`
 
-Wynncraft's class/character selection is a **server-side, resource-pack-driven GUI**.
+The repo explicitly lists "Instanced void worlds / schematic paste" as Future and records the decision "Audience is a session field, not world instancing" [D:Living Spec]. This is consistent with Wynncraft only if the long-term goal is to add phasing/instancing later. The next incremental steps would be:
 
-### How it works
+- Use the existing `FakePlayerPackets` layer to hide or reskin entities per viewer.
+- Later, add a per-player packet filter for blocks/entities.
+- Even later, support void-world or schematic studio copies.
 
-1. On join, the server forces the client to download and apply the Wynncraft resource pack [10].
-2. The player is placed in a protected area where they cannot take damage, chat, or interact normally [11].
-3. The class selection menu is displayed. It lists character slots; the green plus creates a new character. Clicking a slot loads that character [11].
-4. The menu visuals (and much of the rest of the UI) are rendered using **font textures** rather than standard `textures/gui/*.png` files. This lets Wynncraft draw complex UI with text characters and Unicode private-use mappings [12].
-5. The official resource pack is **encrypted**, so third-party tools like MCRPX are needed to inspect it [12].
-6. If the pack fails to load, the player sees a black screen, falls into the void, or sees default items instead of the custom menu [10].
+## 6. The login / class selection screen
 
-### Commands
+This is the part of the user's question with the most direct evidence.
 
-- `/class` — re-opens the selection screen while in-game [11].
-- `/toggle autojoin` — skips the selection screen on future logins [11].
+### What is directly known
 
-### Implication for this project
+**DIRECT**: The `Newcomer's Guide` on the Fandom wiki describes the join flow:
 
-The `cinematics` plugin's success scenario is literally "`first-join`: fade, fly a camera path, park in a class-select studio until the player picks a mannequin, fade, fire `ClassPicked`" [4]. That is the same shape as Wynncraft's flow. The differences are:
+- The official resource pack downloads automatically when joining a world [A].
+- The class selection screen appears after that [A].
+- It has a green plus button to create a character [A].
+- The icons in the upper row are the regular classes [A].
+- Donor ranks get more character slots: 6 for no rank, 9 for VIP, 11 for VIP+, 14 for HERO [A].
+- `/toggle autojoin` skips the selection screen and uses the last-selected class [A].
+- Players switch classes with `/kill` [A].
 
-- Wynncraft uses a **resource pack + font texture GUI** for the menu; this project currently has no resource-pack integration.
-- Wynncraft puts the player in a **protected studio area**; this project will use `HoldFrame` + freeze + actor mannequins.
-- Wynncraft's class selection is **persistent character slots**; this plugin intentionally only fires `ClassPicked` and leaves kits/stats to downstream plugins [4].
+The wiki also shows screenshots of the class selection, character creation, and class info menus [A].
 
-For this project to get the Wynncraft look, the studio beat would need either:
+### What is reported/inferred about the implementation
 
-- A partner resource pack that maps custom font/texture glyphs to actor selection buttons, or
-- A simpler vanilla approach: clickable armor-stand / item-display actors with custom names and `ClassPickedEvent` [13].
+**REPORTED**: The class selection screen is server-side, and the player is held in a protected area where they cannot take damage, chat, or interact normally until a class is chosen [B,C].
 
-The second is more aligned with the current "vanilla clients only" boundary [4].
+**REPORTED**: The custom UI relies heavily on the official resource pack. If the pack fails to load, players report a black screen, falling into the void, or default item textures replacing custom ones [B,C].
 
-## 6. The Scripting Layer — WynnScript and YAML
+**REPORTED**: Wynncraft's modern GUI elements, including advanced menus, are said to use **font textures** (custom font/Unicode mappings) rather than standard `textures/gui/*.png` files [B].
 
-Wynncraft is not just a pile of Java plugins. The Content Team uses:
+**REPORTED**: The official resource pack is encrypted, making it hard to inspect without tools like MCRPX [B].
 
-- **WynnScript**: a proprietary, JavaScript-like scripting language for quests, dungeons, mobs, and events [14].
-- **YAML**: data files for NPC dialogue, quest stages, and mob configurations [14].
-- A separation of concerns: a small core-dev team builds the engine, while a larger volunteer Content Team writes content in WynnScript/YAML [15].
+**INFERRED**: Because the class selection is a custom UI inside a Minecraft client, the server is almost certainly sending packets to show item/entity/element representations that the resource pack re-textures into buttons. The exact protocol is not public.
 
-### Implication for this project
+### Mapping to `cinematics`
 
-The `cinematics` plugin already uses **JSON persistence** for scenes and experiences [4]. It does not have a scripting language. The equivalent progression would be:
+The repo's intended success scenario is: "`first-join`: fade, fly a camera path, park in a class-select studio until the player picks a mannequin, fade, fire `ClassPicked`" [D:Living Spec]. This is the same high-level shape as Wynncraft's join flow, with these differences:
+
+- **Wynncraft**: resource-pack-driven GUI with font textures and persistent character slots.
+- **`cinematics`**: planned to use `HoldFrame` + actor mannequins + `ClassPickedEvent`, no character data, no mandatory resource pack.
+
+For the `cinematics` plugin to get the Wynncraft *look*, it would need either:
+
+- An optional partner resource pack that supplies custom font/texture glyphs, or
+- A vanilla-first approach with clickable armor-stand / item-display actors and custom names.
+
+The second is more aligned with the current "vanilla clients only" boundary [D:Living Spec].
+
+## 7. Scripting and data-driven content
+
+**DIRECT**: The Wynncraft Fandom `Content Team` page explicitly states that **Game Masters (GMs)** "work with YAML files (.yml) and a proprietary scripting language called Wynnscript" to deliver quests, discoveries, minigames, events, lootruns, mobs, and boss altars [A]. It also states that **Scripters** "work with Wynnscript, a proprietary scripting language made specifically for work on Wynncraft" [A]. The page further notes that the **CMD** (command-blocker) role is being replaced by Scripter [A].
+
+This is a strong, direct source. It does not, however, describe the language's syntax in detail or whether Wynnscript is used for *cinematics* specifically. Cinematics may be handled by the same tooling, a separate tool, or command blocks.
+
+**INFERRED**: Because Wynnscript exists for quest/mob/event content, it is plausible that modern cutscenes are authored in it or in a related tool, but the specific cinematic authoring pipeline is not documented.
+
+### Mapping to `cinematics`
+
+The repo uses JSON persistence for scenes and experiences and has no scripting language [D:Living Spec]. The equivalent progression would be:
 
 - Keep JSON as the data layer for now.
-- Add a small expression/evaluator for `allowlisted timestamped commands` (already in Future [4]) so beats can run arbitrary server commands without writing Java.
-- Consider a lightweight DSL later if the experience graph becomes complex.
+- Add `allowlisted timestamped commands` (already in Future [D:Living Spec]) so beats can trigger server commands without Java changes.
+- Consider a lightweight DSL later if the experience graph becomes too complex for pure JSON.
 
-## 7. Resource Pack and Visual Layer
+## 8. Resource pack and visual layer
 
-Wynncraft's resource pack is mandatory and does a lot of the heavy lifting:
+**DIRECT**: The `Newcomer's Guide` confirms that Wynncraft has an official resource pack and that it is required to view different weapon models [A].
 
-- Custom item models, weapon textures, armor, and UI [10].
-- Font-based GUI elements for menus [12].
-- Custom skyboxes, region fog, and lighting effects. Standard shaders can conflict, so WynnIris (an Iris fork) exists to support these custom skyboxes [3].
+**REPORTED**: The pack is said to be encrypted and to contain custom item models, weapon textures, armor, and UI [B]. Modern GUI elements are reported to use font textures [B].
 
-### Implication for this project
+**REPORTED**: Custom skyboxes, region fog, and lighting effects can conflict with standard shaders. WynnIris (a community Iris fork) is reported to support Wynncraft's custom skyboxes [C].
 
-The `cinematics` plugin explicitly excludes "Iris / OptiFine / Vibrant Visuals client shader packs" [4]. That means the project cannot rely on client shader packs for fog/skybox. To mimic Wynncraft's atmosphere with vanilla clients, the plugin can use:
+**INFERRED**: Because `cinematics` explicitly excludes client shader packs [D:Living Spec], the only vanilla-compatible ways to create atmosphere are: vanilla potion overlays (already supported), biome/weather packet tricks, and display-entity props.
 
-- Biome/weather packet tricks (not currently in scope).
-- Display-entity props for localized atmosphere (already partially supported [4]).
-- Vanilla shader overlay ids (`darkness`, `blindness`, `night_vision`, etc.) [16].
+## 9. Mapping reported Wynncraft techniques to the `cinematics` roadmap
 
-## 8. Mapping Wynncraft to the `cinematics` Roadmap
+| Wynncraft technique (as reported) | Confidence | Already in `cinematics` | Next / future slice |
+|---|---|---|---|
+| Recorded actor performances | REPORTED | `PlayerSkinDummy` in-memory [D] | `api.Actor`, recording, frame playback |
+| Smooth camera via ridden/spectated rig | REPORTED / INFERRED | `CameraDolly` per-tick teleport [D] | Optional spectate/rig entity mode |
+| Camera keyframe paths | DIRECT (behavior observed) | `CinematicScene` [D] | Ease functions, Catmull-Rom/Bezier |
+| Vanilla shader overlays | DIRECT (vanilla effects) | `VanillaShaderOverlays` [D] | More vanilla effects, timed sound, titles |
+| Per-player phasing | REPORTED / INFERRED | Audience `SUBJECT` [D] | Packet-level block/entity filtering |
+| Private instances | REPORTED | Out of scope [D] | Void-world / schematic studio copies |
+| Class-select studio | DIRECT (screenshots + wiki) | `StudioBeat` planned [D] | `HoldFrame`, freeze, actor placements |
+| Resource-pack UI | REPORTED | Not integrated | Optional partner pack or font-based GUI |
+| WynnScript/YAML content authoring | DIRECT (wiki) | JSON experiences [D] | YAML/JSON command lists, maybe a DSL |
 
-| Wynncraft technique | Already in `cinematics` | Next / future slice |
-|---|---|---|
-| Recorded actor performances | `PlayerSkinDummy` in-memory [7] | `api.Actor`, recording, frame playback |
-| Smooth camera rig | `CameraDolly` per-tick teleport [7] | Optional spectate/rig entity mode |
-| Camera keyframe paths | `CinematicScene` [17] | Ease functions, Catmull-Rom/Bezier |
-| Shader overlays | `VanillaShaderOverlays` [4] | More vanilla effects, timed sound, titles |
-| Per-player phasing | Audience `SUBJECT` [4] | Packet-level block/entity filtering |
-| Private instances | Out of scope [4] | Void-world / schematic studio copies |
-| Class-select studio | `StudioBeat` planned [13] | `HoldFrame`, freeze, actor placements |
-| Resource-pack UI | Not integrated | Optional partner pack or font-based GUI |
-| WynnScript content authoring | JSON experiences [4] | YAML/JSON command lists, maybe a DSL |
+## 10. Recommended next steps (inferred from the mapping)
 
-## 9. Recommended Next Steps
+These are the author's suggestions for moving the `cinematics` plugin closer to the *reported* Wynncraft style without claiming it is an exact copy:
 
-1. **Prove the actor renderer** — finish the `PlayerSkinDummy` / `CameraDolly` Slice 1 plan, then add `Actor` value types and persistence.
-2. **Add a camera rig mode** — spawn an invisible `item_display` and spectate it for smooth, Wynncraft-style camera motion, with the current teleport mode as fallback.
-3. **Build the studio beat** — `HoldFrame` with parked camera, actor mannequins, freeze, and `ClassPickedEvent`. This directly matches the Wynncraft login/selection experience.
-4. **Defer phasing/instancing** — keep it in Future as decided [4], but design the packet layer so it can later isolate a single player's world view.
-5. **Keep resource-pack integration optional** — do not make a custom resource pack mandatory; support vanilla-first, with an optional pack for the font/GUI look.
+1. **Prove the actor renderer** — complete the `PlayerSkinDummy` / `CameraDolly` Slice 1 plan, then add `Actor` value types and persistence.
+2. **Add a camera rig mode** (optional) — spawn an invisible `item_display` and spectate it for smoother camera motion, with the current teleport mode as fallback.
+3. **Build the studio beat** — `HoldFrame` with parked camera, actor mannequins, freeze, and `ClassPickedEvent`.
+4. **Defer phasing/instancing** — keep it in Future as decided, but design the packet layer so it can later isolate a single player's world view.
+5. **Keep resource-pack integration optional** — do not make a custom pack mandatory; support vanilla-first, with an optional pack for the font/GUI look.
 
-## 10. Sources
+## 11. Sources
 
-1. Wynncraft Forums — "The Actor System [ Includes Video & Gif Demonstrations ]" — https://forums.wynncraft.com/threads/70-supporters-98-6-the-actor-system-includes-video-gif-demonstrations.255656/
-2. Wynncraft Fandom — Newcomer's Guide — https://wynncraft.fandom.com/wiki/Newcomer%27s_Guide
-3. Reddit /r/WynnCraft — shader recommendations and WynnIris notes — https://www.reddit.com/r/WynnCraft/comments/1spibrg/shader_recommendations/
-4. `cinematics` repo — `docs/living-specs/cinematics.md`
-5. Wynncraft Forums — "How Are Wynncraft Quests Made?" — https://forums.wynncraft.com/threads/how-are-wynncraft-quests-made.251446/ (summarized via search)
-6. Wynncraft Forums — "How Is Wynncraft Made?" — https://forums.wynncraft.com/threads/how-is-wynncraft-made.308302/ (summarized via search)
-7. `cinematics` repo — `docs/superpowers/specs/2026-08-26-player-skin-dummy-design.md`
-8. SpigotMC — "How to make a smooth camera animation" — https://www.spigotmc.org/threads/how-to-make-a-smooth-camera-animation.612081/
-9. Wynncraft Forums — "How Are Wynncraft Quests Made?" (phasing/instancing discussion) — https://forums.wynncraft.com/threads/how-are-wynncraft-quests-made.251446/
-10. Wynncraft Forums — resource pack / class selection issues — https://forums.wynncraft.com/threads/allowing-players-to-join-without-downloading-the-pack.99174/ and https://forums.wynncraft.com/threads/problem-loading-into-character-select.320110/
-11. Wynncraft Fandom — Newcomer's Guide (class selection mechanics) — https://wynncraft.fandom.com/wiki/Newcomer%27s_Guide
-12. Wynncraft Forums — "How do I recreate the ability tree GUI texture?" — https://forums.wynncraft.com/threads/how-do-i-recreate-the-ability-tree-gui-texture.319669/
-13. `cinematics` repo — `docs/superpowers/specs/2026-08-19-experience-director-design.md`
-14. Wynncraft Fandom — Content Team (WynnScript) — https://wynncraft.fandom.com/wiki/Content_Team
-15. Reddit /r/WynnCraft — "How does this server have only 4 devs?" — https://www.reddit.com/r/WynnCraft/comments/14szj31/how_does_this_server_have_only_4_devs/
-16. `cinematics` repo — `src/main/java/dev/cinematics/paper/VanillaShaderOverlays.java`
-17. `cinematics` repo — `src/main/java/dev/cinematics/api/CinematicScene.java`
+### A. Wynncraft Fandom wiki (public, official wiki)
+
+A1. `Newcomer's Guide` — https://wynncraft.fandom.com/wiki/Newcomer%27s_Guide
+- Direct quotes used: resource pack downloads on join, class selection screen, green plus, donor rank slots, `/toggle autojoin`, `/kill` to switch class, weapon models require the pack, blocks cannot be broken, loot chests respawn on fixed locations.
+
+A2. `Content Team` — https://wynncraft.fandom.com/wiki/Content_Team
+- Direct quotes used: GMs work with YAML and Wynnscript; Scripters work with Wynnscript; CMD role is being replaced by Scripter.
+
+### B. Wynncraft official forums (titles and search summaries; full threads require login)
+
+B1. "The Actor System [ Includes Video & Gif Demonstrations ]" — https://forums.wynncraft.com/threads/70-supporters-98-6-the-actor-system-includes-video-gif-demonstrations.255656/
+- Reported: recording and replaying player movements as Actor Frames, Scene Editor, Actor Editor.
+
+B2. "How Are Wynncraft Quests Made?" — https://forums.wynncraft.com/threads/how-are-wynncraft-quests-made.251446/
+- Reported: phasing, instancing, packet interception, ghost players during cutscenes.
+
+B3. "How Is Wynncraft Made?" — https://forums.wynncraft.com/threads/how-is-wynncraft-made.308302/
+- Reported: custom Java plugins, Wynnscript, separation of core devs and Content Team.
+
+B4. "Allowing players to join without downloading the pack" — https://forums.wynncraft.com/threads/allowing-players-to-join-without-downloading-the-pack.99174/
+- Reported: resource pack is mandatory, failure leads to black screen / void falling.
+
+B5. "Problem loading into character select" — https://forums.wynncraft.com/threads/problem-loading-into-character-select.320110/
+- Reported: class selection depends on resource pack loading.
+
+B6. "How do I recreate the ability tree GUI texture?" — https://forums.wynncraft.com/threads/how-do-i-recreate-the-ability-tree-gui-texture.319669/
+- Reported: modern GUI uses font textures, resource pack is encrypted.
+
+### C. Community / comparative sources
+
+C1. Reddit /r/WynnCraft — shader recommendations and WynnIris — https://www.reddit.com/r/WynnCraft/comments/1spibrg/shader_recommendations/
+- Reported: WynnIris supports custom skyboxes; standard shaders can conflict.
+
+C2. SpigotMC — "How to make a smooth camera animation" — https://www.spigotmc.org/threads/how-to-make-a-smooth-camera-animation.612081/
+- Reported/inferred: invisible entity riding/spectating for smooth camera, display entity `teleport_duration`, `/spectate`.
+
+C3. Reddit /r/WynnCraft — "How does this server have only 4 devs?" — https://www.reddit.com/r/WynnCraft/comments/14szj31/how_does_this_server_have_only_4_devs/
+- Reported: small core-dev team builds tools, larger volunteer Content Team uses them.
+
+### D. `cinematics` repo design docs and code
+
+D1. `docs/living-specs/cinematics.md`
+D2. `docs/superpowers/specs/2026-08-19-experience-director-design.md`
+D3. `docs/superpowers/specs/2026-08-26-player-skin-dummy-design.md`
+D4. `src/main/java/dev/cinematics/paper/VanillaShaderOverlays.java`
+D5. `src/main/java/dev/cinematics/api/CinematicScene.java`
